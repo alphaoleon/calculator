@@ -1,0 +1,90 @@
+Baue mir (bzw. erweitere meinen bestehenden) "Cross-Prop-Firm Hydra & Fee-Hedge Calculator" als moderne, dunkle Single-File HTML/CSS/JS Web-App (Tailwind CSS via CDN) um einen dauerhaften "Prop-Firm-Speicher (Database & Preset Manager)" mit automatischer Gebühren-Synchronisation.
+
+### 1. PROP-FIRM-SPEICHER & DATENBANK (mit localStorage)
+Baue ein Verwaltungs-Modul ("Meine Prop-Firms"), in dem ich meine 5 bis 6 Prop-Firms dauerhaft im Browser (`localStorage`) speichern, bearbeiten, löschen und neu hinzufügen kann. 
+
+Jede gespeicherte Prop-Firm hat folgende Attribute:
+- `name`: Name der Firma (z.B. "Hypernova Crypto", "Firma A - Zero Fee")
+- `platform`: Gehostete Trading-Plattform (Dropdown: "Eigenes System", "DXtrade", "Match-Trader", "cTrader", "TradeLocker", "Bybit/Binance WL") -> wichtig für Anti-Detection-Warnungen!
+- `makerFee`: Maker-Gebühr in % pro Fill (wird direkt bei Ausführung abgezogen)
+- `takerFee`: Taker-Gebühr in % pro Fill (wird direkt bei Ausführung abgezogen)
+- `profitSplit`: Standard Profit-Split in % (Standard: 80%)
+- `maxDrawdownPct`: Max Drawdown in % (Standard: 3%)
+- `profitTargetPct`: Profit Target in % (Standard: 9%)
+- `prices`: Objekt mit den Eval-Preisen für `{ 5000: 20, 10000: 40, 25000: 95, 50000: 180, 100000: 330 }` (individuell pro Firma anpassbar)
+- `status`: Rotations-Status ("Frei", "Aktiver Kloner (Funded)", "Im Eval-Lauf", "Cash-Kuh (Trader)", "Cooldown / Wartet auf Payout")
+
+Lade beim ersten Start automatisch diese 6 Standard-Profile in den Speicher (falls `localStorage` noch leer ist):
+1. "Prop A (Zero-Fee)": 0.00% Maker | 0.00% Taker | 80% Split
+2. "Prop B (Low-Fee Crypto)": 0.00% Maker | 0.015% Taker (0.03% Round-Trip) | 80% Split
+3. "Hypernova (Crypto)": 0.01% Maker | 0.04% Taker (0.08% Market RT / 0.05% Limit RT) | 80% Split
+4. "Hypernova (FX / Indices / Gold)": 0.00% Maker | 0.005% Taker (0.01% Market RT / 0.005% Limit RT) | 80% Split
+5. "Hypernova (Equities)": 0.00% Maker | 0.03% Taker | 80% Split
+6. "Prop F (Reserve-Firma)": 0.01% Maker | 0.02% Taker | 80% Split
+
+### 2. SLOT-AUSWAHL IM HAUPTRECHNER (Das 3-Konten-Setup)
+Im Hauptrechner wähle ich für meinen Hedge-Zyklus über 3 Karten (Slots) einfach meine gespeicherten Firmen per Dropdown aus:
+
+- **SLOT 1: Mein Funded-Account (Der Kloner - z.B. Long)**
+  - Dropdown: Auswahl aus meinen gespeicherten Prop-Firms (lädt automatisch deren `makerFee`, `takerFee`, `profitSplit` und `maxDrawdownPct`).
+  - Kontogröße wählen (5k, 10k, 25k, 50k, 100k) + optionales Feld "Aktueller Rest-Puffer in USD" (falls Konto schon leicht im Minus/Plus ist).
+  - Ausführungs-Art (Dropdown): 
+    - "Market Entry + SL/TP Exit (2x Taker)" -> `RoundTrip_Fee = 2 * takerFee`
+    - "Limit Entry + SL/TP Exit (1x Maker + 1x Taker)" -> `RoundTrip_Fee = makerFee + takerFee`
+
+- **SLOT 2: Eval-Account #1 (Short)**
+  - Dropdown: Auswahl der gespeicherten Prop-Firm für Eval #1 (lädt automatisch deren Gebühren und den hinterlegten Eval-Preis für die gewählte Kontogröße!).
+  - Kontogröße wählen (5k, 10k, 25k, 50k, 100k) + Rabattcode-Feld in % (z.B. 10%).
+  - Ausführungs-Art: "2x Taker (Market)" oder "1x Maker + 1x Taker (Limit)".
+
+- **SLOT 3: Eval-Account #2 (Short - optional per Toggle aktivierbar/deaktivierbar)**
+  - Dropdown: Auswahl der gespeicherten Prop-Firm für Eval #2 (lädt Gebühren + Eval-Preis).
+  - Kontogröße wählen + Rabattcode-Feld in %.
+  - Ausführungs-Art: "2x Taker (Market)" oder "1x Maker + 1x Taker (Limit)".
+
+### 3. EXAKTE GEBÜHREN- & HEBEL-SYNCHRONISATION (Mathematik-Kern)
+Formel für Gebühren laut Börsen-Standard: `fee = quantity * fill_price * fee_rate` (wird bei jedem Fill sofort vom Kontostand/Puffer abgezogen).
+
+Damit BEIDE Evals trotz unterschiedlicher Gebühren der ausgewählten Firmen exakt bei derselben Kursbewegung (`SL_Move_Pct`, einstellbar per Slider, Standard: `1.00%` Kursbewegung, entspricht ~3x Hebel) sterben, muss der Rechner die Positionsgrößen wie folgt synchronisieren:
+
+1. **Für jede aktive Eval (Eval #1 und Eval #2 individuell berechnet):**
+   - `Eval_Max_DD_USD = Eval_Size * (maxDrawdownPct / 100)`
+   - `Eval_Target_USD = Eval_Size * (profitTargetPct / 100)`
+   - `Eval_RT_Fee = (Ausführungs-Art == Market) ? (2 * takerFee / 100) : ((makerFee + takerFee) / 100)`
+   - **Synchronisierte Eval-Positionsgröße (USD):**
+     `Eval_Pos_USD = Eval_Max_DD_USD / ((SL_Move_Pct / 100) + Eval_RT_Fee)`
+   - **Realer Effektiv-Hebel der Eval:** `Eval_Pos_USD / Eval_Size`
+   - **Gezahlte Gebühren in USD (Round-Trip):** `Eval_Fee_USD = Eval_Pos_USD * Eval_RT_Fee`
+   - **Reale Kursbewegung bis Eval-Sieg (+9% Netto nach Gebühren):**
+     `TP_Move_Pct_Eval = ((Eval_Target_USD + Eval_Fee_USD) / Eval_Pos_USD) * 100`
+   - *(Nimm für den Worst-Case-Verlust des Funded-Accounts die größere der beiden `TP_Move_Pct_Eval` aus Eval #1 und Eval #2 als `Max_TP_Move_Pct`)*.
+
+2. **Für den Funded-Account (Slot 1):**
+   - `Total_Eval_Cost_USD = Cost_Eval_1 + Cost_Eval_2`
+   - `Extra_Profit_Goal_USD` = Slider für "Over-Hedging Zusatzgewinn bei Fehlversuch" (von 0 USD bis +300 USD, Standard: 0 USD).
+   - `Needed_Net_Payout = Total_Eval_Cost_USD + Extra_Profit_Goal_USD`
+   - `Needed_Gross_Profit = Needed_Net_Payout / (Funded_ProfitSplit / 100)`
+   - `Funded_RT_Fee = (Ausführungs-Art == Market) ? (2 * takerFee_Funded / 100) : ((makerFee_Funded + takerFee_Funded) / 100)`
+   - **Exakte Funded-Positionsgröße (USD), damit bei `SL_Move_Pct` nach Abzug der Funded-Gebühren genau `Needed_Gross_Profit` übrig bleibt:**
+     `Funded_Pos_USD = Needed_Gross_Profit / ((SL_Move_Pct / 100) - Funded_RT_Fee)`
+   - **Funded-Hebel:** `Funded_Pos_USD / Funded_Size`
+   - **Funded-Gebühren in USD:** `Funded_Fee_USD = Funded_Pos_USD * Funded_RT_Fee`
+   - **Maximaler Verlust im Funded-Account (inkl. Gebühren), wenn beide Evals bis `Max_TP_Move_Pct` durchlaufen:**
+     `Funded_Loss_At_Eval_Win = Funded_Pos_USD * ((Max_TP_Move_Pct / 100) + Funded_RT_Fee)`
+   - **Verbleibender Restpuffer im Funded:**
+     `Remaining_Buffer_USD = Funded_Available_Buffer_USD - Funded_Loss_At_Eval_Win`
+
+### 4. ANTI-DETECTION-CHECK & ORDER-FUZZING GENERATOR
+Baue direkt über den Ergebnissen ein Sicherheits-Panel ein:
+1. **Firmen- & Plattform-Kollisions-Check:**
+   - Wenn in Slot 1, 2 oder 3 dieselbe Prop-Firm doppelt gewählt wurde -> ROTE WARNUNG ("Achtung: Niemals zwei Konten desselben Hedges bei derselben Prop-Firm eröffnen!").
+   - Wenn zwei unterschiedliche Firmen gewählt wurden, die im Speicher aber dieselbe `platform` (z.B. beide "DXtrade") haben -> GELBE WARNUNG ("Beide Firmen nutzen [Plattform]! Zwingend getrennte Geräte/IPs (z.B. PC-WLAN vs. Smartphone-5G) und 45 Sek. Zeitversatz nutzen!").
+2. **"Order-Fuzzing" Button (Tarn-Modus für krumme Zahlen):**
+   - Ein Button "Tarn-Größen generieren (±1% Fuzzing)", der die berechneten glatten Positionsgrößen leicht verkrümmt, damit keine runden Copier-Summen im Orderbuch stehen.
+
+### 5. KARUSSELL-ROTATIONS-TRACKER
+Wenn ein Zyklus abgeschlossen ist, baue 2 Schnell-Buttons ein:
+- Button 1: "Evals gestorben (+1% Move)" -> Loggt den Versuch in einer Historie, addiert den Over-Hedge-Gewinn zum Cash-Bestand.
+- Button 2: "Evals bestanden (-3% Move) -> Rotation ausführen!" -> Setzt den bisherigen Funded-Account im Speicher automatisch auf "Cooldown", setzt Eval #1 auf "Aktiver Kloner (Funded)" und Eval #2 auf "Cash-Kuh (Trader)".
+
+Gib mir den kompletten, sofort lauffähigen Code in einer einzigen HTML-Datei ohne Platzhalter aus.

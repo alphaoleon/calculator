@@ -1,0 +1,23 @@
+Das neue 4-Schritte-Layout ist genial! Behebe jetzt bitte noch diese 3 kleinen Praxis-Bugs und ergänze die 2 Komfort-Features:
+
+### 1. KEINE MINUS-ZEICHEN BEI SHORT-TICKETS (Wichtig für Copy & Paste!):
+- In Schritt 3 auf den Order-Tickets für SHORT werden "Stückzahl (Coins / Lots)" (z.B. `-11.8227`) und "Positionsgröße in USD" (z.B. `-$29,557`) aktuell mit einem Minuszeichen angezeigt.
+- Ändere das auf **immer positive Werte (Absolutwerte `Math.abs`)**, also `11.8227` und `$29,557`, sowohl in der Anzeige als auch beim Klick auf `[Kopieren]`! Trading-Plattformen akzeptieren im Mengenfeld keine negativen Zahlen (die Richtung wird über das rote Badge "SHORT / VERKAUFEN" bestimmt).
+
+### 2. INTELLIGENTE FIRMEN-KOLLISIONS-WARNUNG & BESSERE DEFAULTS:
+- Wenn zwei Konten Presets nutzen, die mit demselben Firmennamen beginnen (z.B. "Hypernova Crypto" in Konto 1 und "Hypernova Gold/Index/FX" in Konto 3), muss trotzdem die **ROTE WARNUNG** ("ACHTUNG: Gleiche Prop-Firm (Hypernova) mehrfach ausgewählt – Copy-Trading-Sperre!") erscheinen!
+- Setze die Standard-Auswahl beim Laden eines Templates auf 3 komplett verschiedene Firmen:
+  - Konto 1 (Funded): `Zero-Fee Firm (0% / 0%)`
+  - Konto 2 (Eval #1): `Low-Fee Crypto (0% / 0.015%)`
+  - Konto 3 (Eval #2): `Hypernova Crypto (0.01% / 0.04%)`
+
+### 3. CHART-PREIS MIT DEM ECHTEN ENTRY-KURS SYNCHRONISIEREN:
+- In Schritt 4 über den Payoff-Diagrammen wird beim Hovern aktuell noch ein Preis auf Basis von `100.00` angezeigt (z.B. `-0.04% · 99.96`), obwohl oben in Schritt 1 als Entry-Kurs `2500` eingegeben wurde. Verknüpfe die Preis-Anzeige im Chart-Header direkt mit dem echten `Entry $` aus Schritt 1 (`Entry * (1 + Move_Pct / 100)`).
+
+### 4. EDITIERBARER "AKTUELLER RESTPUFFER $" IM FUNDED-ACCOUNT:
+- Ergänze in Schritt 2 in "Karte 1: Mein Funded-Account" ein Zahlenfeld `Verfügbarer DD-Puffer $` (füllt sich bei Größenwahl automatisch mit 3% der Kontogröße, z.B. `$300` bei 10k oder `$3,000` bei 100k, ist aber manuell editierbar, falls das Konto schon leicht im Plus oder Minus steht).
+
+### 5. AUTOMATISCHES EÜR-STEUER-LOGBUCH (mit CSV-Download in Schritt 4):
+- Immer wenn ich in Schritt 4 auf einen der beiden Abschluss-Buttons ("Evals im Breach -> Payout buchen" oder "Evals bestanden -> Konten rotieren") klicke, speichere automatisch einen Eintrag in einer klappbaren Liste **"📄 Mein Steuer- & Trade-Logbuch (EÜR)"** im `localStorage`:
+  - Spalten: `Datum`, `Stufe`, `Eval-Ausgaben ($)`, `Brutto-Payout ($)`, `Netto-Cash-Ergebnis ($)`, `Gewonnene Funded-Konten`.
+- Füge daneben einen Button `[ 📥 Als CSV für Excel / Steuer exportieren ]` ein, der mir diese Historie mit einem Klick als fertige CSV-Datei herunterlädt.

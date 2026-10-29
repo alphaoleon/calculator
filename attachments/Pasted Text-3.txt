@@ -1,0 +1,43 @@
+Baue meine bestehende App komplett auf den "Prop-Firm Hydra-Loop" um und räume das Interface wie folgt auf:
+
+### 1. ENTFERNEN (Options-Ballast rauswerfen):
+- Entferne das komplette Deribit-Options-Modul ("Add leg" mit Call/Put-Strikes, Black-76 Modell, IV-Shift und die "Portfolio"-Tabelle für Optionen).
+- Entferne oben die Options-Griechen-Karten ("Delta ETH", "Gamma", "Vega", "Theta", "IM / MM est."). Behalte den Live-Preis-Feed (optional umschaltbar zwischen BTC, ETH oder einem neutralen "%-Move-Modus" ab Entry = 100%) nur als Referenz für die Umrechnung von USD-Positionsgrößen in Coin-Größen.
+
+### 2. NEUE TOP-KPI-LEISTE (Statt der Griechen):
+Zeige oben 5 klare Status-Karten:
+1. "Gesamtkosten Evals (Cost $)": Summe der Gebühren aller aktiven Challenges.
+2. "Netto-Bilanz bei +1% Move (Evals im SL)": Funded-Netto-Payout (nach Split & Fees) minus Eval-Kosten (Ziel: >= $0.00).
+3. "Funded-Restpuffer bei -3% Move (Evals im TP)": Verbleibender Max-DD-Puffer auf dem Funded-Account, wenn alle Evals ihr 9%-Target netto erreichen (Grüne/Rote Überlebens-Ampel!).
+4. "Hebel-Übersicht": Effektiver Hebel der Evals (z.B. ~3.0x) vs. Hebel des Funded-Accounts (z.B. ~0.83x bis 0.95x).
+5. "Erzeugter Account-Wert bei Sieg": Anzahl und neuer Drawdown-Puffer der gewonnenen Funded-Accounts.
+
+### 3. KORREKTUR DER PAYOFF-LOGIK BEI CHALLENGES:
+- Wichtig: Wenn eine Challenge (Eval) ihr Profit-Target (9%) erreicht, zahlt sie KEINEN direkten Cash-Split (80% von 9%) aus, sondern verwandelt sich in einen neuen Funded-Account!
+- Stelle im Chart und in der Tabelle dar: Bei Eval-Tod (-3% DD erreicht) ist der P&L der Eval = `-Cost $`. Während des Laufs zeigt eine gestrichelte Linie den Fortschritt zum 9%-Target. Sobald das 9%-Target erreicht ist, markiere den Punkt im Chart als "EVAL PASSED (Neuer Funded-Account freigeschaltet!)" und zeige im Funded-Account genau an diesem Punkt den verbleibenden Rest-Drawdown-Puffer an.
+
+### 4. UPGRADE DER "PROP ACCOUNTS"-TABELLE (Zum Hauptmodul machen):
+Erweitere die Tabelle "Prop accounts" um folgende Spalten und Funktionen:
+- Dropdown "Prop-Firm Preset": Speichere im `localStorage` meine 5-6 Firmen inkl. deren Gebühren:
+  - "Zero-Fee Firm" (0% Maker / 0% Taker)
+  - "Low-Fee Crypto" (0% Maker / 0.015% Taker -> 0.03% Round-Trip)
+  - "Hypernova Crypto Market" (0.04% Taker -> 0.08% Round-Trip)
+  - "Hypernova Crypto Limit" (0.01% Maker + 0.04% Taker -> 0.05% Round-Trip)
+  - "Hypernova Gold/Indices/FX" (0% Maker / 0.005% Taker -> 0.01% Round-Trip)
+- Neue Spalte "Round-Trip Fee %": Zieht die Gebühr (`Position_USD * Fee_%`) sofort vom verfügbaren Max-DD ab und addiert sie zum nötigen Brutto-Profit-Target.
+- Eingabe der Positionsgröße primär in **USD (`Position $`) und Hebel (`Leverage x`)**, mit automatischer Anzeige der `Size ETH / Coins` daneben.
+
+### 5. DER "HYDRA AUTO-SYNC"-BUTTON & STUFEN-TEMPLATES:
+Baue über der Prop-Tabelle eine Steuerleiste ein:
+- Slider "Ziel-Kursbewegung bis Eval-Tod (SL Move %)": Standard `1.00%` (~3.0x Hebel).
+- Slider "Over-Hedge Extra-Profit bei Eval-Tod ($)": Standard `$0` (einstellbar bis `+$200`).
+- Button **"Auto-Sync Positionsgrößen"**:
+  1. Berechnet für jede Challenge in der Tabelle automatisch die gebührensynchronisierte Short-Position: `Eval_Pos_USD = Max_DD_USD / ((SL_Move_% / 100) + Eval_RT_Fee)`, damit ALLE Evals trotz unterschiedlicher Gebühren exakt bei `+1.00%` Kursbewegung sterben.
+  2. Berechnet für den/die Funded-Account(s) in der Tabelle automatisch die exakte Long-Gegenposition: `Funded_Pos_USD = ((Summe_Eval_Costs + OverHedge_Profit) / Split_%) / ((SL_Move_% / 100) - Funded_RT_Fee)`, aufgeteilt proportional zum Max-DD der aktiven Funded-Accounts.
+- Button **"Order-Fuzzing (±1%)"**: Verkrümmt die USD-Positionsgrößen minimal für Tarnung gegen Copy-Trading-Filter.
+- **Schnell-Templates (1-Klick-Laden in die Tabelle):**
+  - `10k Safe-Start (1x 10k Funded vs. 1x 10k + 1x 5k Eval)`
+  - `25k Loop (1x 25k Funded vs. 2x 25k Eval)`
+  - `50k Upgrade (2x 25k Funded vs. 2x 50k Eval)`
+  - `100k Upgrade (2x 50k Funded vs. 2x 100k Eval)`
+  - `100k Endgame (1x 100k Funded vs. 2x 100k Eval)`

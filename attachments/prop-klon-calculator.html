@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prop Firm Klon-Calculator</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #3b82f6;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #eab308;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 20px;
+    line-height: 1.5;
+  }
+  h1 { margin: 0 0 8px; font-size: 1.6rem; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .card h2 { margin: 0 0 12px; font-size: 1.1rem; color: #93c5fd; }
+  label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  input, select {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: #0f172a;
+    color: var(--text);
+    font-size: 1rem;
+    margin-bottom: 10px;
+  }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .results { margin-top: 8px; }
+  .result-box {
+    background: #0f172a;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
+    border-left: 3px solid var(--accent);
+  }
+  .result-box.fail { border-left-color: var(--red); }
+  .result-box.pass { border-left-color: var(--green); }
+  .result-box.warn { border-left-color: var(--yellow); }
+  .big { font-size: 1.25rem; font-weight: 600; }
+  .good { color: var(--green); }
+  .bad { color: var(--red); }
+  .neutral { color: var(--yellow); }
+  .small { font-size: 0.8rem; color: var(--muted); }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 8px;
+  }
+  button:hover { background: #2563eb; }
+  .preset { font-size: 0.8rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+</style>
+</head>
+<body>
+<h1>Prop Firm Klon-Calculator</h1>
+<p class="subtitle">Berechnet Positionen, Hebel und Payoff für die Eval-Hedging-Strategie</p>
+
+<div class="grid">
+  <div class="card">
+    <h2>Evals (Short)</h2>
+    <label>Eval-Account Größe (USD)</label>
+    <input type="number" id="evalSize" value="25000" min="1000" step="1000">
+
+    <label>Preis pro Eval (USD)</label>
+    <input type="number" id="evalPrice" value="95" min="1" step="1">
+
+    <label>Anzahl Evals</label>
+    <input type="number" id="numEvals" value="2" min="1" max="20" step="1">
+
+    <label>Eval-Hebel (Notional / Account)</label>
+    <input type="number" id="evalLeverage" value="3" min="1" max="20" step="0.1">
+  </div>
+
+  <div class="card">
+    <h2>Funded (Long) – zum Hedgen</h2>
+    <label>Funded-Account Größe (USD)</label>
+    <input type="number" id="fundedSize" value="25000" min="1000" step="1000">
+
+    <label>Anzahl Funded-Accounts</label>
+    <input type="number" id="numFunded" value="1" min="1" max="10" step="1">
+
+    <label>Modus</label>
+    <select id="fundedMode" onchange="toggleMode()">
+      <option value="optimal">Optimal berechnen (Fail = 0)</option>
+      <option value="manual">Manuelle Notional vorgeben</option>
+    </select>
+
+    <div id="manualNotionalDiv" style="display:none">
+      <label>Notional pro Funded-Account (USD)</label>
+      <input type="number" id="manualNotional" value="23750" min="1000" step="100">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Regeln</h2>
+    <label>Profit Target (%)</label>
+    <input type="number" id="targetPct" value="9" min="1" max="50" step="0.1">
+
+    <label>Max Drawdown (%)</label>
+    <input type="number" id="ddPct" value="3" min="0.5" max="20" step="0.1">
+
+    <label>Profit Split – Trader-Anteil (%)</label>
+    <input type="number" id="splitPct" value="80" min="50" max="100" step="1">
+
+    <button onclick="calculate()">Berechnen</button>
+    <div class="preset" style="margin-top:12px">
+      Presets:
+      <a href="#" onclick="preset(25000,95,2,25000,1,23750);return false">25k→25k</a> ·
+      <a href="#" onclick="preset(50000,180,2,25000,2,22500);return false">50k←25k</a> ·
+      <a href="#" onclick="preset(100000,330,2,50000,2,41250);return false">100k←50k</a>
+    </div>
+  </div>
+</div>
+
+<div class="card results" id="results" style="display:none">
+  <h2>Ergebnis</h2>
+  <div id="output"></div>
+</div>
+
+<script>
+function toggleMode() {
+  const mode = document.getElementById('fundedMode').value;
+  document.getElementById('manualNotionalDiv').style.display = mode === 'manual' ? 'block' : 'none';
+}
+
+function preset(es, ep, ne, fs, nf, mn) {
+  document.getElementById('evalSize').value = es;
+  document.getElementById('evalPrice').value = ep;
+  document.getElementById('numEvals').value = ne;
+  document.getElementById('fundedSize').value = fs;
+  document.getElementById('numFunded').value = nf;
+  if (mn) {
+    document.getElementById('manualNotional').value = mn;
+    document.getElementById('fundedMode').value = 'manual';
+    toggleMode();
+  } else {
+    document.getElementById('fundedMode').value = 'optimal';
+    toggleMode();
+  }
+  calculate();
+}
+
+function calculate() {
+  const evalSize = +document.getElementById('evalSize').value;
+  const evalPrice = +document.getElementById('evalPrice').value;
+  const numEvals = +document.getElementById('numEvals').value;
+  const fundedSize = +document.getElementById('fundedSize').value;
+  const numFunded = +document.getElementById('numFunded').value;
+  const targetPct = +document.getElementById('targetPct').value / 100;
+  const ddPct = +document.getElementById('ddPct').value / 100;
+  const split = +document.getElementById('splitPct').value / 100;
+  const evalLev = +document.getElementById('evalLeverage').value;
+  const mode = document.getElementById('fundedMode').value;
+
+  const totalCost = numEvals * evalPrice;
+  const evalNotional = evalSize * evalLev;
+  const adverseMove = ddPct / evalLev;
+  const favorableMove = targetPct / evalLev;
+
+  let totalFundedNotional, fundedNotionalPer, fundedLeverage;
+
+  if (mode === 'optimal') {
+    totalFundedNotional = totalCost / (adverseMove * split);
+    fundedNotionalPer = totalFundedNotional / numFunded;
+  } else {
+    fundedNotionalPer = +document.getElementById('manualNotional').value;
+    totalFundedNotional = fundedNotionalPer * numFunded;
+  }
+  fundedLeverage = fundedNotionalPer / fundedSize;
+
+  const fundedGrossAtFail = totalFundedNotional * adverseMove;
+  const payoutAtFail = fundedGrossAtFail * split;
+  const netFail = payoutAtFail - totalCost;
+
+  const fundedLossAtPass = totalFundedNotional * favorableMove;
+  const totalDDRoom = numFunded * fundedSize * ddPct;
+  const ddUsagePct = (fundedLossAtPass / (numFunded * fundedSize)) * 100;
+
+  const pPass = adverseMove / (favorableMove + adverseMove);
+  const pFail = 1 - pPass;
+
+  const results = document.getElementById('results');
+  const output = document.getElementById('output');
+  results.style.display = 'block';
+
+  const modeLabel = mode === 'optimal' ? 'Optimal (Fail ≈ 0)' : 'Manuell vorgegeben';
+
+  output.innerHTML = `
+    <div class="result-box">
+      <div class="small">Evals (Short) – ${numEvals} Accounts</div>
+      <div class="big">${numEvals}× ${evalNotional.toLocaleString('de-DE')} USD</div>
+      <div class="small">Hebel ${evalLev.toFixed(2)}× &nbsp;|&nbsp; Fail-Move: +${(adverseMove*100).toFixed(2)} % &nbsp;|&nbsp; Pass-Move: −${(favorableMove*100).toFixed(2)} %</div>
+    </div>
+
+    <div class="result-box">
+      <div class="small">Funded (Long) – ${numFunded} Accounts [${modeLabel}]</div>
+      <div class="big">${numFunded}× ${fundedNotionalPer.toLocaleString('de-DE', {maximumFractionDigits:0})} USD</div>
+      <div class="small">Hebel: <strong>${fundedLeverage.toFixed(3)}×</strong> &nbsp;|&nbsp; Gesamt-Notional: ${totalFundedNotional.toLocaleString('de-DE', {maximumFractionDigits:0})} USD</div>
+      <div class="small">DD-Raum pro Account: ${(fundedSize * ddPct).toLocaleString('de-DE')} USD</div>
+    </div>
+
+    <div class="result-box fail">
+      <div class="small">Fail-Szenario (+${(adverseMove*100).toFixed(2)} % → Evals sterben)</div>
+      <div>Funded Brutto-Gewinn: ${fundedGrossAtFail.toFixed(2)} USD</div>
+      <div>${(split*100).toFixed(0)} %-Payout: <strong>${payoutAtFail.toFixed(2)} USD</strong></div>
+      <div>Eval-Kosten: ${totalCost} USD</div>
+      <div class="big ${Math.abs(netFail) < 1 ? 'good' : (netFail > 0 ? 'good' : 'bad')}">Netto: ${netFail.toFixed(2)} USD</div>
+    </div>
+
+    <div class="result-box pass">
+      <div class="small">Pass-Szenario (−${(favorableMove*100).toFixed(2)} % → Evals treffen Target)</div>
+      <div>Neue Funded-Accounts: ${numEvals}× ${evalSize.toLocaleString('de-DE')} USD</div>
+      <div>Verlust auf bestehenden Funded: ${fundedLossAtPass.toFixed(2)} USD</div>
+      <div>Verfügbarer DD-Raum: ${totalDDRoom.toFixed(0)} USD</div>
+      <div>DD-Auslastung: <strong>${ddUsagePct.toFixed(2)} %</strong></div>
+      <div class="big ${ddUsagePct < (ddPct*100) ? 'good' : 'bad'}">
+        ${ddUsagePct < (ddPct*100) ? 'Bestehende Funded überleben' : 'Bestehende Funded sterben'}
+      </div>
+    </div>
+
+    <div class="result-box warn">
+      <div class="small">Wahrscheinlichkeit (Random Walk)</div>
+      <div class="big">Pass: ${(pPass*100).toFixed(1)} % &nbsp;|&nbsp; Fail: ${(pFail*100).toFixed(1)} %</div>
+    </div>
+
+    <table>
+      <tr><th>Kennzahl</th><th>Wert</th></tr>
+      <tr><td>Gesamtkosten Evals</td><td>${totalCost} USD</td></tr>
+      <tr><td>Funded Gesamt-Notional</td><td>${totalFundedNotional.toFixed(0)} USD</td></tr>
+      <tr><td>Hebel auf Funded</td><td>${fundedLeverage.toFixed(3)}×</td></tr>
+      <tr><td>Fail-Netto</td><td>${netFail.toFixed(2)} USD</td></tr>
+      <tr><td>Pass DD-Auslastung</td><td>${ddUsagePct.toFixed(2)} %</td></tr>
+      <tr><td>Neue Funded bei Pass</td><td>${numEvals}× ${evalSize.toLocaleString('de-DE')}</td></tr>
+    </table>
+  `;
+}
+
+// Initial
+toggleMode();
+calculate();
+</script>
+</body>
+</html>

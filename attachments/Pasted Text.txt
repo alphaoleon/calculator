@@ -1,0 +1,51 @@
+Erweitere meinen bestehenden "Cross-Prop-Firm Hydra Calculator" um ein intelligentes "KI-Strategie- & Optimizer-Modul" (Smart Strategy Advisor & Roadmap Engine). 
+
+Das Modul soll genau wie ein erfahrener Quant-Berater automatisch alle möglichen Account-Kombinationen, Workarounds und Skalierungs-Schritte durchrechnen und mir für meine aktuelle Situation die mathematisch besten Spielzüge (mit exakten Positionsgrößen und 0-USD-Verlust-Garantie bei Fehlversuchen) vorschlagen.
+
+### 1. NEUE EINGABE: "MEIN AKTUELLES INVENTAR" (Ist-Zustand)
+Baue oben im Strategie-Modul einen Bereich ein, in dem ich meinen aktuellen Stand eingeben kann:
+- Mein verfügbares Cash-Kapital auf der Wallet (in USD, z.B. 500 USD).
+- Meine aktuellen Funded-Accounts (Möglichkeit, mehrere Accounts hinzuzufügen, z.B. "1x 10k Funded + 1x 5k Funded" oder "2x 25k Funded", jeweils mit aktuellem Rest-Drawdown-Puffer in USD).
+- Optionaler Rabattcode auf neue Evals in % (Slider: 0% bis 20%, Standard: 0%).
+
+### 2. DIE "SMART OPTIMIZER ENGINE" (Hintergrund-Algorithmus)
+Schreibe eine JavaScript-Funktion, die den gesamten verfügbaren Drawdown-Puffer meiner aktuellen Funded-Accounts zusammenrechnet (Total_Funded_Buffer) und automatisch ALLE möglichen Eval-Kauf-Kombinationen (1x 5k, 2x 5k, 1x 10k + 1x 5k, 2x 10k, 1x 25k, 1x 25k + 1x 10k, 2x 25k, 2x 50k, 2x 100k) durchtestet.
+
+Für jede Kombination prüft der Algorithmus bei 3,0x Eval-Hebel (1% Move bis Eval-SL, 3% Move bis Eval-TP) und 80% Profit-Split:
+- Eval_Kosten_Total = Summe der gekauften Eval-Preise * (1 - Rabatt).
+- Geschätzte Trading-Fees (0,08% Taker Round-Trip auf die Funded-Position).
+- Nötiger_Brutto_Gewinn_Funded (für 0 USD Verlust inkl. Gebühren) = (Eval_Kosten_Total / 0.80) + Trading_Fees.
+- Benötigte_Long_Position_Funded = Nötiger_Brutto_Gewinn_Funded / 0.01 (und aufgeteilt im exakten Verhältnis auf meine vorhandenen Funded-Accounts!).
+- Drawdown_Verbrauch_bei_Eval_Sieg (-3% Kurs) = (Benötigte_Long_Position_Funded * 0.03) + Trading_Fees.
+- Restpuffer_nach_Sieg = Total_Funded_Buffer - Drawdown_Verbrauch_bei_Eval_Sieg.
+
+### 3. DIE 4 AUTOMATISCHEN KI-EMPFEHLUNGS-KARTEN (UI-Output)
+Das Modul soll mir basierend auf der Berechnung immer bis zu 4 konkrete Strategie-Karten (mit einem Klick in den Hauptrechner übernehmbar) ausgeben und in natürlicher Sprache (wie ein Berater) erklären:
+
+1. KARTE A: "Der 100% Safe Zero-Loss Play (Gebührensicher)"
+   - Wenn eine Standard-Verdopplung (wie 1x 10k Funded gegen 2x 10k Evals für 80 USD) genau 300 USD Drawdown frisst und 0 USD Platz für Trading-Gebühren lässt, schlägt die Engine automatisch die nächstkleinere Misch-Kombination vor (z.B. "Kaufe 1x 10k Eval + 1x 5k Eval für 60 USD!").
+   - Zeige exakt: Wie viel Long-Position auf den Funded muss (z.B. 8.000 USD), damit bei +1% Move +64 USD Netto rauskommen (= 0 USD Verlust + 4 USD Gebühren-Überschuss) und bei -3% Move noch 60 USD sicherer Restpuffer bleiben.
+
+2. KARTE B: "Der Over-Hedge Cash-Printer (Fürs Scheitern bezahlt werden)"
+   - Wenn der vorhandene Funded-Puffer größer ist als nötig (z.B. bei 1x 100k Funded gegen 2x 100k Evals bleiben 525 USD Puffer ungenutzt), rechnet die Engine automatisch aus, wie weit ich die Long-Position im Funded-Account aufdrehen kann (bis auf 150 USD Sicherheits-Restpuffer, z.B. auf 95.000 USD Long).
+   - Zeige exakt: Wie viel Netto-Bargeld-Gewinn ich bei JEDEM Fehlversuch der Evals zusätzlich einstreiche (z.B. "+100 USD Reingewinn bar auf die Hand bei jedem gescheiterten Versuch!").
+
+3. KARTE C: "Der Bridge- & Upgrade-Play (Konten bündeln)"
+   - Wenn ich mehrere kleine Funded-Accounts habe (z.B. 1x 10k + 1x 5k Funded oder 2x 25k Funded), zeigt die Karte, wie ich beide Konten parallel Long schalte (exakte Positionsgröße pro Konto proportional zum Puffer), um direkt die nächsthöhere Eval-Stufe (z.B. 1x 25k oder 2x 50k) freizuschalten.
+
+4. KARTE D: "Der knappe Voll-Angriff (Mit Stop-Loss- oder Rabatt-Trick)"
+   - Zeigt für knappe Setups (wie 1x 10k Funded vs. 2x 10k Evals), ab welchem Rabattcode (z.B. 10% Rabatt = 72 USD) das Setup gebührensicher wird ODER bei welchem Kursverlust (z.B. -2,75% / -281 USD) ich im Funded einen harten Stop-Loss setzen muss, während die Evals bereits bei +8,25% Gewinn stehen und per Trailing-SL abgesichert werden.
+
+### 4. INTERAKTIVER ROADMAP-BAUM (Von meinem Stand bis 2x 100k Funded)
+Generiere unter den Karten ein dynamisches, visuelles Schritt-für-Schritt-Flussdiagramm (Roadmap), das mir von meinem aktuellen Inventar aus jede einzelne Stufe bis zur "Endstufe (2x 100k Funded - Account 1 klont, Account 2 casht aus)" vorrechnet.
+- Jeder Schritt in der Grafik muss enthalten:
+  - Welche Evals werden gekauft (Kosten + exakte Short-Positionsgröße bei 3,0x Hebel).
+  - Welche meiner Funded-Accounts halten dagegen (exakte Long-Positionsgröße pro Account + Hebel).
+  - Netto-Payout bei Fehlschlag (+1% Move) vs. Restpuffer & neue Accounts bei Treffer (-3% Move).
+
+### 5. OPTIONALER LIVE-KI-BERATER (API-Integration + Offline-Fallback)
+Baue unten ein ausklappbares "Frag den Hydra-KI-Berater"-Chatfenster ein:
+- Im Offline-Modus (ohne API-Key) beantwortet ein regelbasierter Generator per Schnellwahl-Buttons Fragen wie: "Warum 3x Hebel statt 10x?", "Wie überlebe ich beim 10k-Start die Gebühren?", "Wie cashe ich den 2. Account am besten aus?", "Wie schütze ich mich als Prop-Firm vor diesem Loop?".
+- Optionales Feld für einen xAI Grok API-Key (oder OpenAI API-Key): Wenn eingetragen, sendet der Chat meine aktuellen Rechner-Daten + meine Frage an die API (inkl. System-Prompt, der die gesamte 3x/0.9x Hydra-Mathematik kennt) und gibt mir Live-Antworten direkt im Dashboard.
+
+Gib mir den vollständigen, aktualisierten Single-File HTML/CSS/JS Code aus, sodass alle Berechnungen sofort interaktiv funktionieren.

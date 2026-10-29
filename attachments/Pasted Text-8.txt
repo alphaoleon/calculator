@@ -1,0 +1,29 @@
+Ersetze das manuelle Feld "Extra-Gewinn (Over-Hedge $)" in Schritt 1 durch eine intelligente **Smart-Hedge-Automatik**, die meinen ungenutzten Funded-Drawdown-Puffer automatisch in maximalen Zusatzgewinn bei Eval-Tod (+1% Move) umwandelt, ohne das Funded-Konto zu gefährden:
+
+### 1. NEUER SCHALTER IN SCHRITT 1: "Hedge-Modus (Smart-Sizing)"
+Baue in Schritt 1 statt des manuellen Over-Hedge-Feldes einen klaren 3-Stufen-Auswahlschalter ein (plus Option "Manuell"):
+1. **`🛡️ 100% Sicherheits-Modus (Break-Even = $0 Extra)`:**
+   - Funded-Account holt bei +1% Move exakt die Eval-Kosten rein (`Over_Hedge = $0`). Maximaler Restpuffer im Funded-Account bei Eval-Sieg.
+2. **`🧠 Smart-Hedge: Ausgewogen (Auto-Profit mit 20% Puffer-Reserve)` (STANDARD!):**
+   - Lässt im Funded-Account bei Eval-Sieg (-3.xx% Move) exakt **20% des Funded-Max-DD** (z.B. $60 bei 10k / $600 bei 100k) als eiserne Slippage-Reserve übrig.
+   - Nutzt den gesamten übrigen Puffer (80% des Max-DD) automatisch aus, um die Funded-Position optimal zu vergrößern und berechnet daraus rückwärts den maximal sicheren Extra-Gewinn bei +1% Move!
+3. **`🔥 Smart-Hedge: Maximaler Cashflow (Auto-Profit mit 10% Puffer-Reserve)`:**
+   - Lässt im Funded-Account exakt **10% des Funded-Max-DD** (z.B. $30 bei 10k / $300 bei 100k) als Sicherheits-Reserve übrig und maximiert den Bar-Gewinn bei jedem Eval-Tod (+1% Move).
+4. **`✏️ Manuell`:** Blendet das klassische Zahlenfeld ein, falls ich einen eigenen Dollar-Betrag eintippen will.
+
+### 2. EXAKTE RÜCKWÄRTS-FORMEL FÜR DEN SMART-HEDGE IM CODE:
+Wenn `Smart-Hedge (20% oder 10% Reserve)` aktiv ist, berechne `Funded_Pos_USD` und `Auto_Over_Hedge_USD` wie folgt:
+- `Safety_Reserve_USD = Funded_Max_DD_USD * Reserve_Pct` (wobei `Reserve_Pct` = 0.20 bzw. 0.10 ist).
+- `Max_Allowed_Funded_Loss = Funded_Max_DD_USD - Safety_Reserve_USD`
+- `Max_Safe_Funded_Pos_USD = Max_Allowed_Funded_Loss / ((Max_TP_Move_Pct / 100) + Funded_RT_Fee)`
+- `Min_Required_Funded_Pos_USD = (Total_Eval_Costs / (Funded_Split_Pct / 100)) / ((SL_Move_Pct / 100) - Funded_RT_Fee)`
+- **Entscheidungs-Logik:**
+  - Wenn `Max_Safe_Funded_Pos_USD > Min_Required_Funded_Pos_USD`:
+    Setze `Funded_Pos_USD = Max_Safe_Funded_Pos_USD`.
+    Der daraus entstehende Netto-Payout bei +1% Move minus `Total_Eval_Costs` ist mein automatischer **`Smart-Over-Hedge Gewinn ($)`**!
+  - Wenn `Max_Safe_Funded_Pos_USD <= Min_Required_Funded_Pos_USD` (weil die Evals sehr teuer sind):
+    Setze `Funded_Pos_USD = Min_Required_Funded_Pos_USD` (`Over_Hedge = $0`) und zeige an, dass der Puffer bereits für die Grundkosten gebraucht wird.
+
+### 3. ANZEIGE IN SCHRITT 3 (Im grünen Status-Banner):
+Zeige in Schritt 3 sofort fett an, wie viel Extra-Gewinn der Smart-Hedge für mich herausgeholt hat, z.B.:
+*"🧠 Smart-Hedge aktiv: Funded zahlt alle Eval-Kosten ($60.00) + **$15.40 automatischer Extra-Gewinn** bei +1.00% Move (und behält exakt **$60.00 (20%)** Sicherheits-Reserve bei Eval-Sieg)!"*

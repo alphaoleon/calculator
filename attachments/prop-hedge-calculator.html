@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prop Opposite-Position Optimizer</title>
+  <style>
+    :root {
+      --bg: #0f1419; --card: #1a2332; --border: #2d3a4f;
+      --text: #e7ecf3; --muted: #8b9bb4; --accent: #3b82f6;
+      --accent-hover: #2563eb; --success: #22c55e; --warning: #f59e0b;
+      --danger: #ef4444; --input-bg: #0f172a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.5;
+      padding: 20px 14px; min-height: 100vh;
+    }
+    .container { max-width: 1000px; margin: 0 auto; }
+    header { margin-bottom: 20px; text-align: center; }
+    h1 { font-size: 1.45rem; font-weight: 700; margin-bottom: 5px; }
+    .subtitle { color: var(--muted); font-size: 0.88rem; max-width: 620px; margin: 0 auto; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 11px; padding: 16px;
+    }
+    .card h2 {
+      font-size: 0.92rem; font-weight: 600; margin-bottom: 12px;
+      display: flex; align-items: center; gap: 7px;
+    }
+    .field { margin-bottom: 11px; }
+    .field:last-child { margin-bottom: 0; }
+    label {
+      display: block; font-size: 0.78rem; color: var(--muted);
+      margin-bottom: 3px; font-weight: 500;
+    }
+    .input-row { display: flex; align-items: center; gap: 7px; }
+    input[type="number"] {
+      width: 100%; background: var(--input-bg); border: 1px solid var(--border);
+      border-radius: 7px; padding: 8px 10px; color: var(--text);
+      font-size: 0.9rem; outline: none;
+    }
+    input:focus { border-color: var(--accent); }
+    .unit { color: var(--muted); font-size: 0.8rem; white-space: nowrap; min-width: 24px; }
+    .hint { font-size: 0.71rem; color: var(--muted); margin-top: 2px; }
+    .btn-row { display: flex; gap: 9px; margin-top: 16px; flex-wrap: wrap; }
+    button {
+      background: var(--accent); color: white; border: none; border-radius: 8px;
+      padding: 10px 16px; font-size: 0.88rem; font-weight: 600; cursor: pointer;
+    }
+    button:hover { background: var(--accent-hover); }
+    button.secondary {
+      background: transparent; border: 1px solid var(--border); color: var(--text);
+    }
+    .results { margin-top: 20px; }
+    .opt-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 11px; margin-bottom: 16px;
+    }
+    .metric {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 13px; text-align: center;
+    }
+    .metric .label {
+      font-size: 0.7rem; color: var(--muted); margin-bottom: 4px;
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .metric .value { font-size: 1.22rem; font-weight: 700; }
+    .metric .value.accent { color: var(--accent); }
+    .metric .value.success { color: var(--success); }
+    .metric .value.warning { color: var(--warning); }
+    .metric .sub { font-size: 0.71rem; color: var(--muted); margin-top: 2px; }
+    .scenario {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 11px; padding: 14px; margin-bottom: 12px;
+    }
+    .scenario h3 {
+      font-size: 0.88rem; margin-bottom: 10px;
+      display: flex; align-items: center; gap: 7px;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; font-size: 0.75rem; }
+    td:last-child, th:last-child { text-align: right; }
+    tr:last-child td { border-bottom: none; font-weight: 600; }
+    .positive { color: var(--success); }
+    .negative { color: var(--danger); }
+    .info-box {
+      background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.25);
+      border-radius: 10px; padding: 12px 14px; font-size: 0.82rem;
+      color: #93c5fd; margin-top: 11px; line-height: 1.5;
+    }
+    .warning-box {
+      background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35);
+      border-radius: 10px; padding: 12px 14px; font-size: 0.82rem;
+      color: #fbbf24; margin-top: 11px; line-height: 1.5;
+    }
+    .warning-box strong { color: #fcd34d; }
+    .section-title {
+      font-size: 0.95rem; font-weight: 600; margin: 18px 0 10px;
+      color: var(--text);
+    }
+    .footer {
+      margin-top: 22px; text-align: center; font-size: 0.74rem; color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Opposite-Position Optimizer</h1>
+      <p class="subtitle">
+        Challenge Short + Funded Long.<br>
+        Optimiert Positionsgröße und Leverage so, dass du nach Profit-Split genau die Eval-Fees zurückholst und möglichst wenig Funded-DD verbrauchst.
+      </p>
+    </header>
+
+    <div class="grid">
+      <!-- CHALLENGE -->
+      <div class="card">
+        <h2>📋 Challenge (Eval)</h2>
+
+        <div class="field">
+          <label>Anzahl Challenges</label>
+          <div class="input-row">
+            <input type="number" id="numEvals" value="2" min="1" step="1">
+            <span class="unit">Stk</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Account-Größe pro Challenge</label>
+          <div class="input-row">
+            <input type="number" id="evalSize" value="5000" min="1000" step="500">
+            <span class="unit">$</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Fee pro Challenge</label>
+          <div class="input-row">
+            <input type="number" id="feePerEval" value="20" min="0" step="1">
+            <span class="unit">$</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Profit Target</label>
+          <div class="input-row">
+            <input type="number" id="evalTarget" value="9" min="1" step="0.5">
+            <span class="unit">%</span>
+          </div>
+          <div class="hint" id="evalTargetHint"></div>
+        </div>
+
+        <div class="field">
+          <label>Max. Drawdown (static)</label>
+          <div class="input-row">
+            <input type="number" id="evalDD" value="3" min="0.5" step="0.1">
+            <span class="unit">%</span>
+          </div>
+          <div class="hint" id="evalDDHint"></div>
+        </div>
+
+        <div class="field">
+          <label>Max. erlaubter Leverage Challenge</label>
+          <div class="input-row">
+            <input type="number" id="maxEvalLev" value="10" min="1" step="1">
+            <span class="unit">×</span>
+          </div>
+          <div class="hint">Firm-Limit (frei einstellbar)</div>
+        </div>
+      </div>
+
+      <!-- FUNDED -->
+      <div class="card">
+        <h2>🛡️ Funded Account</h2>
+
+        <div class="field">
+          <label>Funded Account-Größe</label>
+          <div class="input-row">
+            <input type="number" id="fundedSize" value="10000" min="1000" step="500">
+            <span class="unit">$</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Profit Split</label>
+          <div class="input-row">
+            <input type="number" id="profitSplit" value="80" min="50" max="100" step="5">
+            <span class="unit">%</span>
+          </div>
+          <div class="hint">Dein Anteil nach Split</div>
+        </div>
+
+        <div class="field">
+          <label>Max. Overall Drawdown Funded</label>
+          <div class="input-row">
+            <input type="number" id="fundedDD" value="8" min="1" step="0.5">
+            <span class="unit">%</span>
+          </div>
+          <div class="hint" id="fundedDDHint"></div>
+        </div>
+
+        <div class="field">
+          <label>Täglicher Drawdown Funded</label>
+          <div class="input-row">
+            <input type="number" id="fundedDailyDD" value="4" min="0" step="0.5">
+            <span class="unit">%</span>
+          </div>
+          <div class="hint">0 = ignorieren</div>
+        </div>
+
+        <div class="field">
+          <label>Max. erlaubter Leverage Funded</label>
+          <div class="input-row">
+            <input type="number" id="maxFundedLev" value="10" min="1" step="1">
+            <span class="unit">×</span>
+          </div>
+          <div class="hint">Firm-Limit (frei einstellbar)</div>
+        </div>
+
+        <div class="field">
+          <label>Puffer auf die Fee-Rückholung</label>
+          <div class="input-row">
+            <input type="number" id="bufferPct" value="10" min="0" step="5">
+            <span class="unit">%</span>
+          </div>
+          <div class="hint">z.B. 10 % extra wegen Spreads/Slippage</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button onclick="optimize()">Optimieren</button>
+      <button class="secondary" onclick="resetDefaults()">Standardwerte zurücksetzen</button>
+    </div>
+
+    <div class="results" id="results" style="display:none;">
+      <div class="section-title">Optimale Parameter</div>
+      <div class="opt-grid">
+        <div class="metric">
+          <div class="label">Challenge Leverage</div>
+          <div class="value accent" id="optEvalLev">—</div>
+          <div class="sub" id="optEvalLevSub"></div>
+        </div>
+        <div class="metric">
+          <div class="label">Funded Leverage</div>
+          <div class="value accent" id="optFundedLev">—</div>
+          <div class="sub" id="optFundedLevSub"></div>
+        </div>
+        <div class="metric">
+          <div class="label">Challenge Notional</div>
+          <div class="value" id="optChallengeNotional">—</div>
+          <div class="sub" id="optChallengeNotionalSub"></div>
+        </div>
+        <div class="metric">
+          <div class="label">Funded Notional</div>
+          <div class="value success" id="optFundedNotional">—</div>
+          <div class="sub" id="optFundedNotionalSub"></div>
+        </div>
+        <div class="metric">
+          <div class="label">Hedge-Ratio</div>
+          <div class="value warning" id="optRatio">—</div>
+          <div class="sub">Funded / Challenge</div>
+        </div>
+        <div class="metric">
+          <div class="label">Verbrauchter Funded-DD</div>
+          <div class="value" id="optDDUsed">—</div>
+          <div class="sub" id="optDDUsedSub"></div>
+        </div>
+      </div>
+
+      <div class="scenario">
+        <h3>📉 Markt fällt → Challenge (Short) gewinnt / Funded (Long) verliert</h3>
+        <table>
+          <thead>
+            <tr><th>Konto</th><th>P&L</th><th>Status</th></tr>
+          </thead>
+          <tbody id="scenarioDown"></tbody>
+        </table>
+      </div>
+
+      <div class="scenario">
+        <h3>📈 Markt steigt → Challenge (Short) verliert / Funded (Long) gewinnt</h3>
+        <table>
+          <thead>
+            <tr><th>Konto</th><th>P&L</th><th>Status</th></tr>
+          </thead>
+          <tbody id="scenarioUp"></tbody>
+        </table>
+      </div>
+
+      <div class="info-box" id="explanation"></div>
+      <div class="warning-box" id="warnings"></div>
+    </div>
+
+    <div class="footer">
+      Cross-Account Opposite-Positionen sind bei den meisten Prop Firms verboten und können zur Kündigung führen. Nur zur Orientierung.
+    </div>
+  </div>
+
+  <script>
+    function $(id) { return document.getElementById(id); }
+
+    function fmt(n, dec = 0) {
+      return n.toLocaleString('de-DE', { maximumFractionDigits: dec, minimumFractionDigits: dec });
+    }
+    function fmtMoney(n) {
+      const sign = n < 0 ? '−' : (n > 0 ? '+' : '');
+      return sign + fmt(Math.abs(n)) + ' $';
+    }
+    function fmtPct(n) {
+      return fmt(n, 2) + ' %';
+    }
+
+    function updateHints() {
+      const es = parseFloat($('evalSize').value) || 0;
+      const et = parseFloat($('evalTarget').value) || 0;
+      const ed = parseFloat($('evalDD').value) || 0;
+      const fs = parseFloat($('fundedSize').value) || 0;
+      const fd = parseFloat($('fundedDD').value) || 0;
+      $('evalTargetHint').textContent = '= ' + fmt(es * et / 100) + ' $';
+      $('evalDDHint').textContent = '= ' + fmt(es * ed / 100) + ' $';
+      $('fundedDDHint').textContent = '= ' + fmt(fs * fd / 100) + ' $';
+    }
+
+    function optimize() {
+      updateHints();
+
+      const numEvals      = parseFloat($('numEvals').value) || 1;
+      const evalSize      = parseFloat($('evalSize').value) || 0;
+      const feePerEval    = parseFloat($('feePerEval').value) || 0;
+      const evalTargetPct = parseFloat($('evalTarget').value) || 0;
+      const evalDDPct     = parseFloat($('evalDD').value) || 0;
+      const maxEvalLev    = parseFloat($('maxEvalLev').value) || 10;
+
+      const fundedSize    = parseFloat($('fundedSize').value) || 0;
+      const profitSplit   = (parseFloat($('profitSplit').value) || 80) / 100;
+      const fundedDDPct   = parseFloat($('fundedDD').value) || 0;
+      const fundedDailyPct= parseFloat($('fundedDailyDD').value) || 0;
+      const maxFundedLev  = parseFloat($('maxFundedLev').value) || 10;
+      const bufferPct     = (parseFloat($('bufferPct').value) || 0) / 100;
+
+      const totalFees = numEvals * feePerEval;
+      // Betrag, den der Funded VOR Split verdienen muss
+      const neededGrossOnFunded = (totalFees * (1 + bufferPct)) / profitSplit;
+
+      const challengeDD$ = evalSize * (evalDDPct / 100);
+      const totalChallengeDD$ = challengeDD$ * numEvals;
+      const challengeTarget$ = evalSize * (evalTargetPct / 100);
+      const fundedDD$ = fundedSize * (fundedDDPct / 100);
+      const fundedDaily$ = fundedDailyPct > 0 ? fundedSize * (fundedDailyPct / 100) : Infinity;
+
+      // -------------------------------------------------------
+      // OPTIMIERUNG (Variante B)
+      // Challenge trifft DD → Funded holt nach Split die Fees.
+      // Möglichst wenig Funded-DD verbrauchen.
+      // Höherer Challenge-Leverage → kleinerer Preis-Move →
+      // kleinere Funded-Notional → weniger DD-Verbrauch.
+      // -------------------------------------------------------
+
+      let best = null;
+
+      for (let eLev = maxEvalLev; eLev >= 1; eLev -= 0.5) {
+        const cNotional = evalSize * eLev * numEvals;
+        const priceMoveToFail = totalChallengeDD$ / cNotional * 100;
+
+        // Zu kleiner Move ist unrealistisch
+        if (priceMoveToFail < 0.15) continue;
+
+        const fNotional = neededGrossOnFunded / (priceMoveToFail / 100);
+
+        let fLev = fNotional / fundedSize;
+        if (fLev < 1) fLev = 1;
+        if (fLev > maxFundedLev) continue;
+
+        // Im Fail-Szenario (Markt fällt): Funded verliert
+        const fundedLossOnFailMove = fNotional * (priceMoveToFail / 100);
+        const ddUsedPct = fundedDD$ > 0 ? (fundedLossOnFailMove / fundedDD$) * 100 : 0;
+
+        // Score: möglichst wenig DD-Verbrauch, leichte Bevorzugung höherer Challenge-Leverage
+        const score = ddUsedPct + (maxEvalLev - eLev) * 1.5;
+
+        if (!best || score < best.score) {
+          best = {
+            eLev, fLev, cNotional, fNotional,
+            priceMoveToFail, fundedLossOnFailMove, ddUsedPct, score
+          };
+        }
+      }
+
+      if (!best) {
+        const eLev = maxEvalLev;
+        const cNotional = evalSize * eLev * numEvals;
+        const priceMoveToFail = Math.max(totalChallengeDD$ / cNotional * 100, 0.2);
+        const fNotional = neededGrossOnFunded / (priceMoveToFail / 100);
+        const fLev = Math.min(maxFundedLev, Math.max(1, fNotional / fundedSize));
+        best = {
+          eLev, fLev, cNotional, fNotional,
+          priceMoveToFail, fundedLossOnFailMove: fNotional * (priceMoveToFail / 100),
+          ddUsedPct: 0, score: 999
+        };
+      }
+
+      // Anzeige
+      $('optEvalLev').textContent = fmt(best.eLev, 1) + '×';
+      $('optEvalLevSub').textContent = 'von max. ' + maxEvalLev + '×';
+      $('optFundedLev').textContent = fmt(best.fLev, 2) + '×';
+      $('optFundedLevSub').textContent = 'von max. ' + maxFundedLev + '×';
+      $('optChallengeNotional').textContent = fmt(best.cNotional) + ' $';
+      $('optChallengeNotionalSub').textContent = numEvals + ' × ' + fmt(evalSize * best.eLev) + ' $';
+      $('optFundedNotional').textContent = fmt(best.fNotional) + ' $';
+      $('optFundedNotionalSub').textContent = 'Margin ca. ' + fmt(best.fNotional / best.fLev) + ' $';
+      $('optRatio').textContent = fmt(best.fNotional / best.cNotional, 3) + '×';
+      $('optDDUsed').textContent = fmtPct(best.ddUsedPct);
+      $('optDDUsedSub').textContent = fmtMoney(-best.fundedLossOnFailMove) + ' von ' + fmt(fundedDD$) + ' $ DD';
+
+      // Szenarien
+      const move = best.priceMoveToFail / 100;
+
+      const cPnL_down = best.cNotional * move;
+      const fPnL_down = -best.fNotional * move;
+      const cPnL_up   = -best.cNotional * move;
+      const fPnL_up   = best.fNotional * move;
+      const traderReceivesOnUp = fPnL_up * profitSplit;
+
+      function cStatus(pnl) {
+        if (pnl >= challengeTarget$ * numEvals * 0.97) return 'Target erreicht ✓';
+        if (pnl <= -totalChallengeDD$) return 'DD getroffen → Fail';
+        return 'noch im Spiel';
+      }
+      function fStatus(pnl) {
+        if (pnl <= -fundedDD$) return 'Overall-DD → Account weg';
+        if (pnl <= -fundedDaily$) return 'Daily-DD erreicht';
+        return 'ok';
+      }
+
+      $('scenarioDown').innerHTML = `
+        <tr>
+          <td>Challenge (Short)</td>
+          <td class="positive">${fmtMoney(cPnL_down)}</td>
+          <td>${cStatus(cPnL_down)}</td>
+        </tr>
+        <tr>
+          <td>Funded (Long)</td>
+          <td class="negative">${fmtMoney(fPnL_down)}</td>
+          <td>${fStatus(fPnL_down)}</td>
+        </tr>
+        <tr>
+          <td><strong>Netto (vor Fees)</strong></td>
+          <td colspan="2">${fmtMoney(cPnL_down + fPnL_down)}</td>
+        </tr>
+      `;
+
+      $('scenarioUp').innerHTML = `
+        <tr>
+          <td>Challenge (Short)</td>
+          <td class="negative">${fmtMoney(cPnL_up)}</td>
+          <td>${cStatus(cPnL_up)}</td>
+        </tr>
+        <tr>
+          <td>Funded (Long) brutto</td>
+          <td class="positive">${fmtMoney(fPnL_up)}</td>
+          <td>${fStatus(fPnL_up)}</td>
+        </tr>
+        <tr>
+          <td>Davon nach ${fmt(profitSplit*100)} % Split</td>
+          <td class="positive">${fmtMoney(traderReceivesOnUp)}</td>
+          <td>Ziel: ${fmtMoney(totalFees * (1 + bufferPct))}</td>
+        </tr>
+        <tr>
+          <td><strong>Fees zurückgeholt?</strong></td>
+          <td colspan="2">${traderReceivesOnUp >= totalFees * (1 + bufferPct) * 0.98 ? '✓ Ja' : '✗ Noch nicht ganz'}</td>
+        </tr>
+      `;
+
+      $('explanation').innerHTML = `
+        <strong>Optimierungsergebnis</strong><br><br>
+        Challenge-Leverage und Funded-Leverage wurden so gewählt, dass:<br>
+        1. Ein Preis-Move von ca. <strong>${fmtPct(best.priceMoveToFail)}</strong> die Challenge(s) in den DD schickt (Fail).<br>
+        2. Der gleiche Move auf dem Funded (Gegenseite) brutto <strong>${fmtMoney(fPnL_up)}</strong> bringt.<br>
+        3. Nach dem Profit-Split von <strong>${fmt(profitSplit*100)} %</strong> bleiben dir ca. <strong>${fmtMoney(traderReceivesOnUp)}</strong> 
+           → damit sind die Fees${bufferPct > 0 ? ' + Puffer' : ''} gedeckt.<br><br>
+        Gleichzeitig wird möglichst wenig vom Funded-Drawdown verbraucht 
+        (aktuell ca. <strong>${fmtPct(best.ddUsedPct)}</strong> des Overall-DD im Fail-Szenario).
+      `;
+
+      let warns = [];
+      if (best.ddUsedPct > 80) {
+        warns.push('Im Fail-Szenario wird bereits über 80 % des Funded-Overall-DD verbraucht. Sehr eng.');
+      }
+      if (best.fLev >= maxFundedLev * 0.95) {
+        warns.push('Funded-Leverage liegt am erlaubten Maximum. Wenig Reserve.');
+      }
+      if (best.priceMoveToFail < 0.4) {
+        warns.push('Der benötigte Preis-Move ist sehr klein (' + fmtPct(best.priceMoveToFail) + '). Spreads und Slippage können das Ergebnis stark verfälschen.');
+      }
+      if (fPnL_up > fundedDaily$ && fundedDaily$ < Infinity) {
+        warns.push('Der Gewinn-Move auf dem Funded überschreitet den Daily-DD. Der Trade müsste über mehrere Tage laufen oder der Daily-DD wird getroffen.');
+      }
+      warns.push('Cross-Account Opposite-Positionen sind bei fast allen Prop Firms verboten und können zur sofortigen Kündigung + Payout-Verweigerung führen.');
+
+      $('warnings').innerHTML = '<strong>Hinweise & Risiken</strong><br>' + warns.map(w => '• ' + w).join('<br>');
+
+      $('results').style.display = 'block';
+    }
+
+    function resetDefaults() {
+      $('numEvals').value = 2;
+      $('evalSize').value = 5000;
+      $('feePerEval').value = 20;
+      $('evalTarget').value = 9;
+      $('evalDD').value = 3;
+      $('maxEvalLev').value = 10;
+      $('fundedSize').value = 10000;
+      $('profitSplit').value = 80;
+      $('fundedDD').value = 8;
+      $('fundedDailyDD').value = 4;
+      $('maxFundedLev').value = 10;
+      $('bufferPct').value = 10;
+      updateHints();
+      optimize();
+    }
+
+    ['evalSize','evalTarget','evalDD','fundedSize','fundedDD'].forEach(id => {
+      $(id).addEventListener('input', updateHints);
+    });
+
+    updateHints();
+    optimize();
+  </script>
+</body>
+</html>

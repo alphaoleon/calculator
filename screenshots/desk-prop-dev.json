@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Position Builder",
+      "hasCanvas": false,
+      "bodyTextLen": 1500,
+      "bodyTextHash": "615545f28433abe5cc16b3ca626b5e49a46d89a448ecd396cc473064e2b89f29",
+      "bodyTextPrefix": "Position Builder Options, futures, and prop accounts Builder Opt",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/desk-prop-dev.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Position Builder",
+      "hasCanvas": false,
+      "bodyTextLen": 1464,
+      "bodyTextHash": "273fdfe7905da622f823cd8464601ace573d5531ec80389579587b3d1d646fe9",
+      "bodyTextPrefix": "Position Builder Builder Optimizer BTC ETH SOL HYPE Inverse USDC",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/desk-prop-dev-mobile.png"
+    }
+  },
+  "brandWarnings": [
+    "BRAND NOTE: no custom public/og.jpg — the platform will serve the og.grok.me placeholder. Custom cards are the default for games of every kind (DOM board/word games included), whimsical apps, creative tools, and brand-forward pages — only plain utilities (converters, CRUD trackers, admin dashboards) keep the placeholder. If this app is not a plain utility, finish the brand-asset pass per /workspace/.grok/skills/og/SKILL.md."
+  ],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/desk-prop-dev.json"
+}

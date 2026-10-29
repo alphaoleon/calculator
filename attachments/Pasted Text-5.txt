@@ -1,0 +1,39 @@
+Mache jetzt das finale Master-Update für meinen "Hydra Loop"-Rechner. Baue die Sektion "Hydra-Payoff" auf ZWEI vollständige, interaktive Payoff-Diagramme aus (Einzel-Payoffs + Netto-Payoff-Diagramm) und ergänze die letzten Live-Trading-Features:
+
+### 1. ZWEI PAYOFF-DIAGRAMME (Einzel-Payoffs & Netto-Payoff untereinander oder nebeneinander)
+Zeige über die Kursbewegungs-Achse (von -4.5% bis +2.5% rund um den Entry-Preis, mit synchronisiertem Fadenkreuz/Hover über beide Charts) zwei getrennte Diagramme:
+
+- **DIAGRAMM 1: "Einzel-Payoffs (Konten-Synchronisation)"**
+  - Plottet für jedes in der Tabelle angehakte Konto eine eigene farbige Linie:
+    - **Funded-Account(s) (z.B. Blau/Cyan):** Steigt bei positivem Move (abzüglich Fee & Split-Ansicht) und fällt bei negativem Move bis zu seiner roten Max-DD-Floor-Linie (`-Max DD $`).
+    - **Eval #1 & Eval #2 (z.B. Orange & Violett):** FallenRichtung SL und flachen exakt bei ihrem individuellen Max-DD-Verlust auf ihre feste Linie `-Kosten $` ab (damit man visuell sieht, dass beide Evals dank Fee-Sync exakt bei +1.00% sterben!). In Gewinnrichtung steigt die Kurve gestrichelt bis zum +9% Netto-Target (inkl. Fee) und markiert dort mit einem grünen Punkt "EVAL PASSED (Neuer Funded-Puffer freigeschaltet!)".
+  - Zeichne vertikale Hilfslinien bei `0.00% (Entry)`, beim `Eval-SL (+1.00%)` und beim `Eval-Pass (~ -3.00% bis -3.32%)`.
+
+- **DIAGRAMM 2: "Netto-Payoff-Diagramm (Gesamtbilanz unter dem Strich)"**
+  - Addiert alle aktiven Konten bei jedem Preis-Punkt zusammen und zeigt zwei kombinierte Netto-Kurven:
+    1. **Netto-Cash-P&L (Weiße/Grüne Hauptlinie):** `Funded Netto-Payout (nach 80% Split & Fees) minus gezahlte Eval-Kosten`. Zeigt bei +1.00% Move exakt den Break-Even (`$0.00`) bzw. den eingestellten Over-Hedge-Gewinn (z.B. `+$100.00`), inklusive grün/roter Flächenfüllung über/unter der 0$-Linie.
+    2. **Netto-Puffer- & Account-Bilanz (Goldene/Grüne Stufen-Linie):** Zeigt die Veränderung meines gesamten Drawdown-Puffers (`Verbleibender Funded-Puffer + neu freigeschalteter Funded-Puffer bei Eval-Pass minus verlorener Puffer`). Sobald die Evals bei ~ -3.00% bestehen, springt diese Kurve sichtbar nach oben ins Plus (z.B. von 3.000$ auf 6.250$ Gesamt-Puffer).
+  - Zeige beim Hovern mit der Maus über beide Charts live an: `Kurs % | Preis $ | Einzel-P&L pro Konto | Netto-Cash $ | Netto-Gesamtpuffer $`.
+
+### 2. TABELLEN-KOMPRIMIERUNG & CLICK-TO-COPY (Für fehlerfreie Order-Eingabe)
+- Reduziere die Tabelle "Prop accounts" auf 13 übersichtliche Spalten:
+  - Fasse "RT Fee %" und "Fee $" in einer einzigen Spalte "Fee" zusammen (z.B. "$222 (0.08%)").
+  - Zeige "Max DD $" kompakt direkt in der Spalte "Größe" an (z.B. "100k (DD $3,000)").
+- **Click-to-Copy:** Mache alle Werte in den Spalten `Position $`, `Size (Coins/Lots)`, `SL Kurs $` und `TP Kurs $` per Klick in die Zwischenablage kopierbar (mit kurzem grünem Tooltip "Kopiert!").
+
+### 3. RABATT-, SPLIT- & OVER-HEDGE-STEUERUNG
+- Ergänze oben in der Steuerleiste neben den Templates drei kompakte Eingabefelder:
+  1. `Eval-Rabatt %` (0% bis 25%, Standard: 0%) -> reduziert automatisch die `Kosten $` aller aktiven Evals.
+  2. `Funded Split %` (50% bis 100%, Standard: 80%).
+  3. `Over-Hedge Extra $` (Standard: $0) -> addiert den gewünschten Zusatzgewinn bei Eval-Tod (+1% Move) direkt auf das Netto-Ziel des Funded-Accounts (verschiebt die Netto-Payoff-Kurve bei +1% sichtbar über die 0$-Linie!).
+- Entferne oben rechts das dauerhafte Deribit-"Connecting"-Badge, sobald ein manueller Entry-Preis genutzt wird.
+
+### 4. SLIPPAGE-SCHUTZ, ORDER-FUZZING & STEALTH-TIMER
+- **Button "Fuzzing (±1.2%)":** Variiert auf Klick die berechneten `Position $` aller Konten minimal um ±0,8% bis ±1,5% auf krumme Beträge gegen Copy-Trading-Filter.
+- **Funded Hard-Breach-Schutz:** Falls der Verlust eines Funded-Accounts beim Eval-TP näher als $50 an sein `Max DD $`-Limit herankommt, markiere den `SL Kurs $` gelb und setze einen Sicherheits-SL bei 95% des Max-Drawdowns.
+- **Kollisions-Warnung & 45s-Timer:** Zeige ein rotes Banner, falls zwei aktive Zeilen dieselbe `Firma` nutzen, und baue einen kleinen **"Stealth-Countdown (45s)"**-Button für den zeitversetzten Einstieg zwischen den Konten ein.
+
+### 5. PERSISTENTER BANKROLL- & ROTATIONS-TRACKER (localStorage)
+- Speichere unter der Tabelle mein `Wallet Cash $` (Start: $500) im `localStorage` mit zwei 1-Klick-Buttons:
+  1. **"Evals im SL (+1% Move) -> Payout buchen"** (addiert `Netto bei +1.00%` zum Wallet-Cash).
+  2. **"Evals bestanden (-3% Move) -> Rotation!"** (setzt den alten Funded auf `Cooldown`, schaltet Eval #1 auf `Funded (Aktiv)` und Eval #2 auf `Trader (Cash-Kuh)`).

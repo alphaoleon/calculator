@@ -1,0 +1,100 @@
+Baue die Benutzeroberfläche meiner App ("Hydra Loop") komplett neu auf als minimalistisches, extrem übersichtliches Dark-Mode-Dashboard mit einem strikten **Schritt-für-Schritt-Ablauf von oben nach unten (Schritt 1 bis Schritt 4)**.
+
+### WAS KOMPLETT ENTFERNT WERDEN MUSS:
+1. Entferne die große 13-Spalten-Tabelle ("Prop accounts") komplett!
+2. Entferne oben rechts das Deribit-"ETH index / Connecting"-Widget komplett.
+3. Entferne die 5 losgelösten KPI-Karten ganz oben – die Ergebnisse gehören erst in Schritt 3 direkt über die fertigen Order-Tickets.
+
+---
+
+### EXAKTE MATHEMATIK IM HINTERGRUND (Unbedingt beibehalten!):
+- **Eval-Breach (+1.00% Move):** Wenn eine Eval ihren Max-Drawdown erreicht, wird sie durch die Live-Equity automatisch geschlossen (Hard-Breach). Es fällt bis zum Breach-Punkt also NUR die einfache Eröffnungsgebühr (`Open_Fee = Maker_oder_Taker_Entry_Fee`) an, KEINE Closing-Fee!
+  - `Eval_Max_DD_USD = Eval_Size * (Max_DD_Pct / 100)`
+  - `Eval_Pos_USD = Eval_Max_DD_USD / ((SL_Move_Pct / 100) + Eval_Open_Fee)`
+- **Eval-Pass (~ -3.00% Move bis +9% Netto-Target):** Zum Bestehen muss die Position regulär geschlossen werden. Hier fällt die volle Round-Trip-Gebühr (`Eval_RT_Fee = Open_Fee + Close_Fee`) an:
+  - `Eval_Target_USD = Eval_Size * (Target_Pct / 100)`
+  - `Eval_Fee_RT_USD = Eval_Pos_USD * Eval_RT_Fee`
+  - `TP_Move_Pct_Eval = ((Eval_Target_USD + Eval_Fee_RT_USD) / Eval_Pos_USD) * 100`
+  - `Max_TP_Move_Pct = Maximum aus TP_Move_Pct von Eval #1 und Eval #2`
+- **Funded-Account (Gegenposition):** Darf niemals breachen und wird auf beiden Seiten regulär geschlossen (volle `Funded_RT_Fee`):
+  - `Total_Eval_Costs = (Cost_Eval_1 + Cost_Eval_2) * (1 - Rabatt_Pct / 100)`
+  - `Needed_Net_Payout = Total_Eval_Costs + Over_Hedge_Extra_USD`
+  - `Needed_Gross_Profit = Needed_Net_Payout / (Funded_Split_Pct / 100)`
+  - `Funded_Pos_USD = Needed_Gross_Profit / ((SL_Move_Pct / 100) - Funded_RT_Fee)`
+  - `Funded_Loss_At_Eval_Win = Funded_Pos_USD * ((Max_TP_Move_Pct / 100) + Funded_RT_Fee)`
+  - `Funded_Remaining_Buffer = Funded_Max_DD_USD - Funded_Loss_At_Eval_Win`
+  - **Sicherheits-SL für Funded:** Falls `Funded_Remaining_Buffer < 50 USD`, setze den SL-Kurs des Funded-Accounts automatisch auf 95% seines Max-Drawdowns (Slippage-Schutz).
+
+---
+
+### NEUER SEITEN-AUFBAU (Strikt von oben nach unten: Schritt 1 -> 2 -> 3 -> 4)
+
+#### SCHRITT 1 (Ganz oben): SETUP & MARKTPREIS WÄHLEN
+Eine aufgeräumte Box mit der Überschrift **"1. Zyklus-Stufe & Marktpreis eingeben"**:
+- **Reihe 1 – Schnellwahl-Buttons (Templates):**
+  - `[ 10k Safe-Start (10k Funded vs. 10k + 5k Eval) ]`
+  - `[ 25k Loop (25k Funded vs. 2x 25k Eval) ]`
+  - `[ 50k Upgrade (2x 25k Funded vs. 2x 50k Eval) ]`
+  - `[ 100k Endgame (100k Funded vs. 2x 100k Eval) ]`
+- **Reihe 2 – 5 klare Eingabefelder nebeneinander:**
+  1. `Aktueller Kurs / Entry $`: Großes Zahlenfeld (Standard: `2500`, frei editierbar für BTC, ETH, Gold, Nasdaq).
+  2. `Setup-Richtung`: Umschalter `[ Evals SHORT / Funded LONG ]` ⇄ `[ Evals LONG / Funded SHORT ]`.
+  3. `Eval-Breach bei %`: Slider/Feld (Standard: `1.00%`).
+  4. `Eval-Rabatt %`: Zahlenfeld (Standard: `0%`).
+  5. `Extra-Gewinn (Over-Hedge $)`: Zahlenfeld (Standard: `$0`).
+
+---
+
+#### SCHRITT 2 (Darunter): MEINE KONTEN KONFIGURIEREN
+Überschrift **"2. Konten & Prop-Firms auswählen"** (rechts oben in der Ecke ein kleiner Button `[ ⚙️ Firmen-Speicher verwalten ]`, der ein aufklappbares Einstellungsfenster öffnet, um im `localStorage` meine Prop-Firms inkl. Maker-/Taker-Fee zu bearbeiten. Standard-Presets im Speicher: "Zero-Fee (0% / 0%)", "Low-Fee Crypto (0% / 0.015%)", "Hypernova Crypto (0.01% Maker / 0.04% Taker)", "Hypernova Gold/Index/FX (0% Maker / 0.005% Taker)", "Hypernova Equities (0% / 0.03%)").
+
+Zeige hier KEINE Tabelle, sondern **3 übersichtliche Karten nebeneinander** (beim 50k-Upgrade werden 2 Funded-Karten angezeigt):
+
+- **Karte 1 (Cyan/Blauer Rahmen): "🛡️ Konto 1: Mein Funded-Account"**
+  - Dropdown `Prop-Firm` (zeigt Name + Gebühr)
+  - Dropdown `Kontogröße` (`5k`, `10k`, `25k`, `50k`, `100k` -> zeigt daneben `Max DD: $3,000` an)
+  - Dropdown `Ausführung` (`Market Entry (2x Taker)` vs. `Limit Entry (Maker + Taker)`)
+  - Feld `Profit Split %` (Standard: `80%`)
+
+- **Karte 2 (Oranger Rahmen): "🎯 Konto 2: Eval-Challenge #1"**
+  - Dropdown `Prop-Firm`
+  - Dropdown `Kontogröße` (`5k`, `10k`, `25k`, `50k`, `100k`)
+  - Feld `Eval-Kaufpreis $` (automatisch passend zur Größe: `$20 / $40 / $95 / $180 / $330`, aber manuell überschreibbar)
+  - Dropdown `Ausführung` (`Market Entry (2x Taker)` vs. `Limit Entry (Maker + Taker)`)
+
+- **Karte 3 (Violetter Rahmen): "🎯 Konto 3: Eval-Challenge #2"** (mit An/Aus-Toggle)
+  - Exakt dieselben 4 Felder wie Karte 2.
+
+---
+
+#### SCHRITT 3 (Darunter): SICHERHEITS-CHECK & FERTIGE ORDER-TICKETS
+Überschrift **"3. Fertige Orders kopieren & ausführen"**
+
+1. **Große Status-Ampel über den Tickets (Grüne Box wenn `Funded_Remaining_Buffer > 0`, Rote Warnbox wenn `< 0` oder wenn zweimal dieselbe Prop-Firm gewählt wurde):**
+   - Zeige in 2 klaren Sätzen:
+     - **Bei +1.00% Kursbewegung (Evals breachen):** *"Funded gewinnt **[Netto-Payout $]** (nach Split & Fees) und bezahlt alle Eval-Kosten (**[Total_Eval_Costs $]**). Netto-Ergebnis: **[+$0.00 / +Over-Hedge $]**."*
+     - **Bei -3.xx% Kursbewegung (Beide Evals bestehen!):** *"Du schaltest **2 neue Funded-Konten** frei! Dein alter Funded verliert **[Funded_Loss $]** und überlebt mit **[Funded_Remaining_Buffer $]** Restpuffer."*
+
+2. **Aktions-Leiste direkt über den Order-Karten:**
+   - Button `[ 🎲 Tarn-Modus: Zahlen leicht krumm machen (±1.2% Fuzzing) ]`
+   - Button `[ ⏱️ 45s Stealth-Timer starten ]` (zählt groß sichtbar von 45 Sekunden rückwärts für den Zeitversatz zwischen der Order-Eingabe).
+
+3. **3 große "Order-Tickets" (Spickzettel-Karten) nebeneinander – passend zu den 3 Konten:**
+   Jedes Ticket zeigt groß und aufgeräumt NUR die Werte, die ich im Broker eintippen muss, jeweils mit einem direkten `[ 📋 Kopieren ]`-Button (kopiert die nackte Zahl ohne Währungszeichen und zeigt kurz "Kopiert!"):
+   - **Kopfbereich:** Kontoname + Firma + großes Badge `LONG / KAUFEN` (Grün) oder `SHORT / VERKAUFEN` (Rot).
+   - **Zeile 1 – Stückzahl (Coins / Lots):** **`[Size]`** `[ 📋 Kopieren ]`
+   - **Zeile 2 – Positionsgröße in USD:** **`[Position $]`** `[ 📋 Kopieren ]` *(klein darunter: `Hebel: [X.XX]x | Fee: $[Fee]`)*
+   - **Zeile 3 – Take-Profit Kurs (TP):** **`[TP Kurs $]`** `[ 📋 Kopieren ]` *(klein darunter: `bei [Move %] Kursbewegung`)*
+   - **Zeile 4 – Stop-Loss Kurs (SL):** **`[SL Kurs $]`** `[ 📋 Kopieren ]` *(Bei Evals mit Zusatzhinweis: "Kein SL nötig – Konto schließt bei diesem Kurs automatisch durch 3% Equity-Breach ohne Closing-Fee").*
+
+---
+
+#### SCHRITT 4 (Ganz unten): PAYOFF-DIAGRAMME & ROTATIONS-TRACKER
+Überschrift **"4. Payoff-Kurven & Zyklus-Abschluss"**
+1. **Die 2 interaktiven Payoff-Diagramme nebeneinander (auf Desktop) bzw. untereinander (auf Mobil):**
+   - **Links: `Einzel-Payoffs (Konten-Synchronisation)`** (zeigt jede Kontolinie einzeln inkl. exaktem Breach-Knick bei 1% und Pass-Punkt bei ~3%).
+   - **Rechts: `Netto-Payoff-Diagramm (Gesamtbilanz)`** (zeigt die weiße Netto-Cash-Linie und die goldene Puffer-Stufenlinie, die beim Eval-Pass nach oben springt).
+2. **Darunter eine kompakte Leiste "Zyklus abschließen (Bankroll-Tracker im localStorage)":**
+   - Anzeige: `Aktuelles Wallet-Cash: $[Wallet]` | `Fehlversuche in dieser Stufe: [X]`
+   - Button 1: `[ 💥 Evals im Breach (+1%) -> Payout zum Wallet buchen ]`
+   - Button 2: `[ 🏆 Evals bestanden (-3%) -> Konten rotieren! ]`

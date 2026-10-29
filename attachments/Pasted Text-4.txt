@@ -1,0 +1,29 @@
+Mache jetzt das finale Master-Update für meinen "Hydra Loop"-Rechner. Behalte die bestehende Berechnungslogik und den Payoff-Chart exakt bei und ergänze diese letzten UI- und Live-Trading-Features:
+
+### 1. TABELLEN-KOMPRIMIERUNG & CLICK-TO-COPY (Für fehlerfreie Order-Eingabe)
+- Reduziere die Tabellenbreite auf 13 übersichtliche Spalten:
+  - Fasse "RT Fee %" und "Fee $" in einer einzigen Spalte "Fee" zusammen (z.B. "$222 (0.08%)").
+  - Zeige "Max DD $" kompakt direkt in der Spalte "Größe" an (z.B. "100k (DD $3,000)").
+- **Click-to-Copy:** Mache alle Zellen in den Spalten `Position $`, `Size (Coins/Lots)`, `SL Kurs $` und `TP Kurs $` anklickbar. Ein Klick kopiert den exakten Zahlenwert (ohne $-Zeichen/Tausendertrennzeichen) direkt in die Zwischenablage und zeigt kurz ein grünes Badge "Kopiert!".
+
+### 2. RABATT-, SPLIT- & OVER-HEDGE-STEUERUNG
+- Ergänze oben in der Steuerleiste neben den Templates drei kompakte Eingabefelder:
+  1. `Eval-Rabatt %` (0% bis 25%, Standard: 0%) -> reduziert automatisch die `Kosten $` aller aktiven Evals und senkt damit die nötige Funded-Position.
+  2. `Funded Split %` (50% bis 100%, Standard: 80%).
+  3. `Over-Hedge Extra $` (Standard: $0) -> addiert den gewünschten Zusatzgewinn bei Eval-Tod (+1% Move) direkt auf das Netto-Ziel des Funded-Accounts.
+- Entferne oben rechts das dauerhafte Deribit-"Connecting"-Badge, sobald ein manueller Entry-Preis genutzt wird.
+
+### 3. SLIPPAGE-SCHUTZ & ORDER-FUZZING (Tarn-Modus)
+- **Button "Fuzzing (±1.2%)":** Variiert auf Klick die berechneten `Position $` (und `Size`) aller Konten minimal um ±0,8% bis ±1,5% auf krumme Beträge (z.B. $296,450 statt $300,000), damit keine identischen Copier-Größen im Orderbuch stehen, während die Netto-Bilanz im grünen Bereich bleibt.
+- **Funded Hard-Breach-Schutz:** Falls der Verlust eines Funded-Accounts beim Eval-TP (-3% Move) näher als $50 an sein `Max DD $`-Limit herankommt, markiere den `SL Kurs $` des Funded-Accounts gelb und berechne den Sicherheits-Stop-Kurs exakt bei 95% des Max-Drawdowns (damit Slippage das Konto nicht zerstört).
+
+### 4. STEALTH-EXECUTION-TIMER & KOLLISIONS-WARNUNG
+- Prüfe automatisch die Spalte `Firma` aller aktiven Zeilen: Wenn zwei aktive Konten dieselbe Firma nutzen, zeige oben ein rotes Warn-Banner ("ACHTUNG: Gleiche Prop-Firm mehrfach aktiv – Copy-Trading-Sperre!").
+- Baue neben der Tabelle einen kleinen **"Stealth-Countdown (45s)"**-Button ein: Wenn ich beim Platzieren von Konto 1 darauf klicke, zählt er zufällig zwischen 35 und 55 Sekunden herunter und gibt ein kurzes Signal, wann ich das nächste Konto sicher eröffnen kann.
+
+### 5. PERSISTENTER BANKROLL- & ROTATIONS-TRACKER (im localStorage)
+Baue unter der Tabelle eine kompakte Leiste "Mein Aufstiegs- & Rotations-Tracker" ein (wird automatisch im `localStorage` gespeichert):
+- Feld `Wallet Cash $` (Startwert: $500.00).
+- Zwei 1-Klick-Ergebnis-Buttons nach einem abgeschlossenen Trade:
+  1. **Button "Evals im SL (+1% Move) -> Payout buchen":** Addiert das Netto-Ergebnis (`Netto bei +1.00%`) automatisch zu meinem `Wallet Cash $` und erhöht den Zähler "Fehlversuche im aktuellen Zyklus".
+  2. **Button "Evals bestanden (-3% Move) -> Rotation!":** Setzt den bisherigen Funded-Account in der Tabelle auf Status `Cooldown`, schaltet die erste bestandene Eval automatisch auf `Funded (Aktiv)` und die zweite Eval auf `Trader (Cash-Kuh)` um und speichert den neuen Stand.
