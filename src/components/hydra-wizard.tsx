@@ -17,7 +17,7 @@ import {
   type CycleSlot,
 } from "@/lib/cycle";
 import { useBook } from "@/lib/book-store";
-import { fmtIndex, fmtUsd } from "@/lib/format";
+import { fmtUsd } from "@/lib/format";
 import {
   ACCOUNT_SIZES,
   DEFAULT_PRESETS,
@@ -32,7 +32,6 @@ import {
   orderPrices,
   passMove,
   priceOf,
-  safetyStop,
   savePresets,
   setLoopSettings,
   type AccountSize,
@@ -42,6 +41,17 @@ import {
 import type { PropAccount } from "@/lib/types";
 
 const BANK_KEY = "position-builder.bankroll.v1";
+const TAX_KEY = "position-builder.tax.v1";
+
+type TaxRow = {
+  nr: number;
+  date: string;
+  text: string;
+  wallet: string;
+  usd: number;
+  fx: number;
+  eur: number;
+};
 
 function roundEntry(price: number): number {
   if (price >= 100) return Math.round(price * 100) / 100;
@@ -70,8 +80,8 @@ function LiveBoards({
     <div className="mt-4">
       <p className="text-[11px] text-faint">
         {pinned
-          ? `${pinned.id} folgt Hyperliquid. Nochmal klicken oder ins Feld tippen stoppt das.`
-          : "Klick hält den Entry auf dem Live-Kurs von Hyperliquid."}
+          ? `${pinned.id} folgt ${quotes[pinned.symbol]?.futures === false ? "dem letzten Hyperliquid-Kurs" : "Hyperliquid"}. Tippen ins Feld macht den Kurs manuell.`
+          : "Manueller Kurs aktiv. Ein Button startet den Live-Kurs."}
       </p>
       {(["crypto", "tradfi"] as const).map((group) => (
         <div key={group} className="mt-2">
@@ -99,10 +109,8 @@ function LiveBoards({
 }
 
 const HEDGE_MODES: { id: HedgeMode; label: string }[] = [
-  { id: "safe", label: "🛡️ 100% Sicherheits-Modus (Break-Even = $0 Extra)" },
-  { id: "balanced", label: "🧠 Smart-Hedge: Ausgewogen (20% Puffer-Reserve)" },
-  { id: "max", label: "🔥 Smart-Hedge: Maximaler Cashflow (10% Puffer-Reserve)" },
   { id: "manual", label: "✏️ Manuell" },
+  { id: "auto", label: "🧠 Smart-Hedge (Auto, 10% Restpuffer)" },
 ];
 
 export function HydraWizard() {
@@ -114,13 +122,16 @@ export function HydraWizard() {
   const [ready, setReady] = useState(false);
   const [left, setLeft] = useState<number | null>(null);
   const [bank, setBank] = useState({ cash: 500, fails: 0 });
-  const [ledger, setLedger] = useState<LedgerRow[]>([]);
+  const [ledger, setLedger] = useState<TaxRow[]>([]);
   const [quotes, setQuotes] = useState<Record<string, LiveQuote>>({});
   const [liveSymbol, setLiveSymbol] = useState<string | null>(null);
   const entryRef = useRef<HTMLInputElement>(null);
+  const livePaused = useRef(false);
 
   useEffect(() => {
-    setPlan(loadPlan());
+    const loaded = loadPlan();
+    setPlan(loaded);
+    if (entryRef.current) entryRef.current.value = String(loaded.entry);
     setPresets(loadPresets());
     setBank(loadBank());
     setLedger(loadLedger());
@@ -182,15 +193,21 @@ export function HydraWizard() {
   }, []);
 
   useEffect(() => {
-    if (!liveSymbol) return;
+    if (livePaused.current || !liveSymbol) return;
     const price = quotes[liveSymbol]?.price;
     if (!(price > 0)) return;
     if (entryRef.current && document.activeElement === entryRef.current) return;
     const next = roundEntry(price);
+    if (entryRef.current) entryRef.current.value = String(next);
     setPlan((prev) => (prev.entry === next ? prev : { ...prev, entry: next }));
   }, [liveSymbol, quotes]);
 
-  const edit = (patch: Partial<CyclePlan>) => setPlan((prev) => ({ ...prev, ...patch, fuzz: null }));
+  const pauseLive = () => {
+    livePaused.current = true;
+    setLiveSymbol(null);
+  };
+  const edit = (patch: Partial<CyclePlan>) => setPlan((prev) => ({ ...prev, ...patch, fuzz: null, dirtyTarget: null, layerShare: null }));
+  const tweak = (patch: Partial<CyclePlan>) => setPlan((prev) => ({ ...prev, ...patch }));
   const recalculate = () => {
     const typed = Number(entryRef.current?.value);
     setPlan((prev) => ({
@@ -200,10 +217,12 @@ export function HydraWizard() {
     }));
     setPresets((prev) => prev.map((row) => ({ ...row })));
   };
-  const pushLedger = (row: Omit<LedgerRow, "date">) => {
+  const saveTax = (rows: Omit<TaxRow, "nr">[]) => {
     setLedger((prev) => {
-      const next = [{ date: new Date().toISOString(), ...row }, ...prev].slice(0, 200);
-      window.localStorage.setItem(LEDGER_KEY, JSON.stringify(next));
+      let nr = prev.reduce((max, row) => Math.max(max, row.nr), 0);
+      const stamped = rows.map((row) => ({ ...row, nr: (nr += 1) }));
+      const next = [...stamped, ...prev].slice(0, 400);
+      window.localStorage.setItem(TAX_KEY, JSON.stringify(next));
       return next;
     });
   };
@@ -224,19 +243,14 @@ export function HydraWizard() {
       .map((account) => presets.find((row) => row.id === account.presetId)?.name ?? account.presetId),
   );
   const clash = families.length > 0;
-  const alive = remaining > 0 && !clash;
+  const alive = remaining > 0 && !clash && net >= -0.5;
+  const unhedgeable = evals.length > 0 && (funds.length === 0 || remaining <= 0);
+  const uncovered = evals.length > 0 && funds.length > 0 && net < -0.5;
   const failLabel = `${failMove >= 0 ? "+" : ""}${(failMove * 100).toFixed(2)}%`;
   const passLabel = `${(pass ?? (plan.side === "evals-short" ? -0.03 : 0.03)) * 100 >= 0 ? "+" : ""}${((pass ?? (plan.side === "evals-short" ? -0.03 : 0.03)) * 100).toFixed(2)}%`;
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
-      <header className="flex items-end justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-[0.16em] text-muted">Hydra Loop</p>
-          <h1 className="text-2xl font-semibold tracking-tight">Zyklus planen</h1>
-        </div>
-      </header>
-
+    <div className="flex w-full flex-col gap-2">
       <section className="rounded-2xl border border-line bg-surface p-4">
         <h2 className="text-sm font-semibold">1. Zyklus-Stufe & Marktpreis eingeben</h2>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -246,7 +260,7 @@ export function HydraWizard() {
             </Button>
           ))}
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <div className="text-xs text-muted">
             <label>
               Aktueller Kurs / Entry $
@@ -255,9 +269,10 @@ export function HydraWizard() {
                 className="mt-1 h-12 w-full rounded-xl border border-line bg-bg px-3 text-right font-mono text-lg text-fg"
                 inputMode="decimal"
                 defaultValue={plan.entry}
-                key={plan.entry}
-                onFocus={() => setLiveSymbol(null)}
-                onBlur={(event) => {
+                onPointerDown={pauseLive}
+                onFocus={pauseLive}
+                onChange={(event) => {
+                  pauseLive();
                   const next = Number(event.target.value);
                   if (next > 0) edit({ entry: next });
                 }}
@@ -285,7 +300,7 @@ export function HydraWizard() {
             </div>
           </div>
           <label className="text-xs text-muted">
-            Kurs-Abstand bis Eval-Tod % (Chart-Move)
+            Eval-Breach bei %
             <input
               className="mt-1 h-12 w-full rounded-xl border border-line bg-bg px-3 text-right font-mono text-lg text-fg"
               type="number"
@@ -308,6 +323,19 @@ export function HydraWizard() {
               onChange={(event) => edit({ discount: Number(event.target.value) })}
             />
           </label>
+          <label className="text-xs text-muted">
+            Extra-Gewinn bei Eval-Tod (Over-Hedge $)
+            <input
+              className="mt-1 h-12 w-full rounded-xl border border-line bg-bg px-3 text-right font-mono text-lg text-fg disabled:opacity-40"
+              type="number"
+              min={0}
+              max={5000}
+              step={5}
+              disabled={plan.hedge === "auto"}
+              value={plan.extra}
+              onChange={(event) => edit({ extra: Number(event.target.value), hedge: "manual" })}
+            />
+          </label>
         </div>
         <LiveBoards
           quotes={quotes}
@@ -315,8 +343,14 @@ export function HydraWizard() {
           onPick={(symbol) => {
             const quote = quotes[symbol];
             const nextOn = liveSymbol !== symbol;
+            if (nextOn) livePaused.current = false;
+            else pauseLive();
             setLiveSymbol(nextOn ? symbol : null);
-            if (nextOn && quote && quote.price > 0) edit({ entry: roundEntry(quote.price) });
+            if (nextOn && quote && quote.price > 0) {
+              const next = roundEntry(quote.price);
+              if (entryRef.current) entryRef.current.value = String(next);
+              edit({ entry: next });
+            }
           }}
         />
         <div className="mt-4">
@@ -336,20 +370,6 @@ export function HydraWizard() {
               </button>
             ))}
           </div>
-          {plan.hedge === "manual" ? (
-            <label className="mt-3 block max-w-xs text-xs text-muted">
-              Extra-Gewinn (Over-Hedge $)
-              <input
-                className="mt-1 h-12 w-full rounded-xl border border-line bg-bg px-3 text-right font-mono text-lg text-fg"
-                type="number"
-                min={0}
-                max={5000}
-                step={5}
-                value={plan.extra}
-                onChange={(event) => edit({ extra: Number(event.target.value) })}
-              />
-            </label>
-          ) : null}
         </div>
       </section>
 
@@ -378,9 +398,9 @@ export function HydraWizard() {
               setPlan((prev) => ({
                 ...prev,
                 fuzz: null,
-                funded: prev.funded.map((row) => (row.presetId === id ? { ...row, presetId: next[0]?.id ?? "zero" } : row)),
-                eval1: prev.eval1.presetId === id ? { ...prev.eval1, presetId: next[0]?.id ?? "zero" } : prev.eval1,
-                eval2: prev.eval2.presetId === id ? { ...prev.eval2, presetId: next[0]?.id ?? "zero" } : prev.eval2,
+                funded: prev.funded.map((row) => (row.presetId === id ? { ...row, presetId: next[0]?.id ?? "breakout" } : row)),
+                eval1: prev.eval1.presetId === id ? { ...prev.eval1, presetId: next[0]?.id ?? "breakout" } : prev.eval1,
+                eval2: prev.eval2.presetId === id ? { ...prev.eval2, presetId: next[0]?.id ?? "breakout" } : prev.eval2,
               }));
             }}
             onClose={() => {
@@ -389,12 +409,25 @@ export function HydraWizard() {
             }}
           />
         ) : null}
+        {unhedgeable || uncovered ? (
+          <div className="mt-3 rounded-xl bg-short/15 px-3 py-2 text-sm">
+            {unhedgeable ? (
+              <p className="font-semibold">
+                {funds.length === 0
+                  ? "Nicht hedgebar: kein Funded-Konto aktiv."
+                  : `Nicht hedgebar: Beim Eval-Sieg bleibt kein Funded-Puffer (${fmtUsd(remaining, true)}).`}
+              </p>
+            ) : null}
+            {uncovered ? (
+              <p className="font-semibold">Nicht gedeckt: Das Payout {fmtUsd(payout)} reicht nicht für die Eval-Kosten {fmtUsd(costs)}.</p>
+            ) : null}
+          </div>
+        ) : null}
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
           {plan.funded.map((row, index) => (
             <AccountCard
               key={row.id}
               title={`Konto ${index + 1}: Mein Funded-Account`}
-              tone="border-cyan-400"
               kind="funded"
               slot={row}
               presets={presets}
@@ -403,7 +436,6 @@ export function HydraWizard() {
           ))}
           <AccountCard
             title={`Konto ${plan.funded.length + 1}: Eval-Challenge #1`}
-            tone="border-orange-400"
             kind="eval"
             slot={plan.eval1}
             presets={presets}
@@ -411,7 +443,6 @@ export function HydraWizard() {
           />
           <AccountCard
             title={`Konto ${plan.funded.length + 2}: Eval-Challenge #2`}
-            tone="border-violet-400"
             kind="eval"
             slot={plan.eval2}
             presets={presets}
@@ -422,9 +453,19 @@ export function HydraWizard() {
       </section>
 
       <section className="rounded-2xl border border-line bg-surface p-4">
-        <h2 className="text-sm font-semibold">3. Fertige Orders kopieren & ausführen</h2>
+        <h2 className="text-sm font-semibold">3. Fertige Orders ablesen & im Anti-Detect-Browser eintippen</h2>
         <div className={cn("mt-3 rounded-2xl px-4 py-3 text-sm", alive ? "bg-long/15 text-fg" : "bg-short/15 text-fg")}>
           <HedgeLine mode={plan.hedge} costs={costs} extra={net} reserve={remaining} failLabel={failLabel} />
+          {unhedgeable ? (
+            <p className="font-semibold">
+              {funds.length === 0
+                ? "Nicht hedgebar: Es ist kein Funded-Konto aktiv."
+                : `Nicht hedgebar: Beim Eval-Sieg läge das Funded ${fmtUsd(Math.abs(remaining))} unter dem Drawdown. Die Evals lassen sich so nicht absichern.`}
+            </p>
+          ) : null}
+          {uncovered ? (
+            <p className="font-semibold">Nicht gedeckt: Das Payout {fmtUsd(payout)} reicht nicht für die Eval-Kosten {fmtUsd(costs)}.</p>
+          ) : null}
           <p className="mt-2">
             Bei {failLabel} Kursbewegung (Evals breachen): Funded gewinnt <b>{fmtUsd(payout)}</b> (nach Split & Fees) und bezahlt alle Eval-Kosten (<b>{fmtUsd(costs)}</b>). Netto-Ergebnis: <b>{fmtUsd(net, true)}</b>.
           </p>
@@ -441,16 +482,35 @@ export function HydraWizard() {
           <Button
             tone="accent"
             onClick={() => {
-              const clean = materialize({ ...plan, fuzz: null }, presets);
-              const fuzzed = fuzzWide(clean, plan.entry, plan.sl, plan.side);
-              setPlan((prev) => ({ ...prev, fuzz: fuzzed.map((account) => account.positionUsd) }));
+              const clean = materialize({ ...plan, fuzz: null, dirtyTarget: null, layerShare: null }, presets);
+              const fuzzed = fuzzWide(clean, plan.entry, plan.sl, plan.side, 0.009);
+              const dirty = Math.round((9.14 + Math.random() * 0.2) * 100) / 100;
+              const layer = Math.round((0.53 + Math.random() * 0.09) * 1000) / 1000;
+              setPlan((prev) => ({
+                ...prev,
+                fuzz: fuzzed.map((account) => account.positionUsd),
+                dirtyTarget: dirty,
+                layerShare: layer,
+              }));
             }}
           >
-            Tarn-Modus: Zahlen leicht krumm machen (±1.2% Fuzzing)
+            🎲 Tarn-Modus (Fuzzing + Dirty-Target + Human-Rounding)
           </Button>
-          <Button onClick={() => setLeft(45)}>45s Stealth-Timer starten</Button>
+          <Button onClick={() => setLeft(90 + Math.floor(Math.random() * 91))}>⏱️ Stealth-Timer starten (Zufall 90s–180s)</Button>
+          <button
+            type="button"
+            className={cn("h-9 rounded-full px-3 text-xs", plan.humanRound ? "bg-fg text-bg" : "bg-bg text-muted")}
+            onClick={() => tweak({ humanRound: !plan.humanRound })}
+          >
+            🖐️ Menschliche Rundung (2 Nachkommastellen) {plan.humanRound ? "AN" : "AUS"}
+          </button>
           {left != null ? <p className="font-mono text-4xl tabular-nums text-accent">{left}s</p> : null}
         </div>
+        {plan.dirtyTarget != null ? (
+          <p className="mt-2 text-xs text-muted">
+            Tarn aktiv: Eval-Target {plan.dirtyTarget.toFixed(2)}% statt 9,00% · Schichten {Math.round((plan.layerShare ?? 0.55) * 100)}% / {100 - Math.round((plan.layerShare ?? 0.55) * 100)}%.
+          </p>
+        ) : null}
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
           {accounts.filter((account) => account.enabled).map((account) => (
             <Ticket key={account.id} account={account} plan={plan} presets={presets} pass={pass} entry={plan.entry} />
@@ -459,9 +519,9 @@ export function HydraWizard() {
       </section>
 
       <section className="rounded-2xl border border-line bg-surface p-4">
-        <h2 className="text-sm font-semibold">4. Payoff-Kurven & Zyklus-Abschluss</h2>
+        <h2 className="text-sm font-semibold">4. Payoff-Kurven & Steuer-Dokumentation</h2>
         <div className="mt-3">
-          <HydraPayoff percentMode={false} split entry={plan.entry} />
+          <HydraPayoff percentMode={false} split entry={plan.entry} accounts={accounts} />
         </div>
         <div className="mt-4 rounded-xl bg-bg p-3">
           <h3 className="text-sm font-semibold">Zyklus abschließen</h3>
@@ -471,35 +531,55 @@ export function HydraWizard() {
             Fehlversuche in dieser Stufe: <b className="text-fg">{bank.fails}</b>
           </p>
           {plan.note ? <p className="mt-2 text-sm text-preview">{plan.note}</p> : null}
+          <label className="mt-3 block max-w-xs text-xs text-muted">
+            Aktueller BMF-Monatskurs (EUR/USD)
+            <input
+              className="mt-1 h-11 w-full rounded-xl border border-line bg-surface px-3 text-right font-mono text-base text-fg"
+              type="number"
+              min={0.5}
+              max={2}
+              step={0.01}
+              value={plan.fx}
+              onChange={(event) => tweak({ fx: Number(event.target.value) })}
+            />
+          </label>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button
               tone="buy"
               onClick={() => {
                 setBank((prev) => ({ cash: Math.round((prev.cash + net) * 100) / 100, fails: prev.fails + 1 }));
-                pushLedger({ stage: stageLabel(plan), costs, payout, net, won: 0 });
+                saveTax(taxLines("breach", evals, funds, presets, payout, plan.fx));
               }}
             >
-              Evals im Breach ({failLabel}) → Payout zum Wallet buchen
+              💥 Evals im Breach ({failLabel}) → Payout & Ausgaben buchen
             </Button>
             <Button
               tone="accent"
               onClick={() => {
+                saveTax(taxLines("pass", evals, funds, presets, 0, plan.fx));
                 setPlan((prev) => ({
                   ...prev,
                   fuzz: null,
+                  dirtyTarget: null,
+                  layerShare: null,
                   note: "Altes Funded im Cooldown. Eval #1 ist jetzt das Funded. Eval #2 ist die Cash-Kuh und aus dem Hedge.",
                   funded: [{ ...prev.funded[0], presetId: prev.eval1.presetId, size: prev.eval1.size, fill: prev.eval1.fill, enabled: true, buffer: null }],
                   eval1: { ...prev.eval1, enabled: false },
                   eval2: { ...prev.eval2, enabled: false },
                 }));
                 setBank((prev) => ({ ...prev, fails: 0 }));
-                pushLedger({ stage: stageLabel(plan), costs, payout: 0, net: -costs, won: evals.length });
               }}
             >
-              Evals bestanden ({passLabel}) → Konten rotieren
+              🏆 Evals bestanden ({passLabel}) → Rotation & Ausgaben buchen
             </Button>
           </div>
-          <Ledger rows={ledger} />
+          <Ledger
+            rows={ledger}
+            onClear={() => {
+              setLedger([]);
+              window.localStorage.setItem(TAX_KEY, "[]");
+            }}
+          />
         </div>
       </section>
     </div>
@@ -527,7 +607,7 @@ function HedgeLine({
   if (extra <= 0.5) {
     return (
       <p className="font-semibold">
-        🧠 Smart-Hedge: Der Puffer wird bereits für die Grundkosten gebraucht. Over-Hedge = $0, die Funded-Position bleibt auf Break-Even.
+        🧠 Smart-Hedge: Mehr Over-Hedge würde den 10%-Restpuffer unterschreiten. Over-Hedge bleibt $0.
       </p>
     );
   }
@@ -540,7 +620,6 @@ function HedgeLine({
 
 function AccountCard({
   title,
-  tone,
   kind,
   slot,
   presets,
@@ -548,7 +627,6 @@ function AccountCard({
   onChange,
 }: {
   title: string;
-  tone: string;
   kind: "funded" | "eval";
   slot: CycleSlot;
   presets: FirmPreset[];
@@ -562,17 +640,10 @@ function AccountCard({
   const dd = slot.buffer != null ? slot.buffer : autoBuffer;
   const price = slot.cost == null ? priceOf(slot.size) : slot.cost;
   return (
-    <article className={cn("rounded-2xl border-2 bg-bg p-3", tone, !slot.enabled && "opacity-50")}>
+    <article className={cn("rounded-2xl border border-line bg-bg p-3", !slot.enabled && "opacity-50")}>
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold">{title}</h3>
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            className={cn("h-7 rounded-full px-2 text-[11px]", slot.fill === "market" ? "bg-fg text-bg" : "text-muted")}
-            onClick={() => onChange({ fill: slot.fill === "market" ? "limit" : "market" })}
-          >
-            {slot.fill === "market" ? "Market" : "Limit"}
-          </button>
           {toggle || !slot.enabled ? (
             <button type="button" className="h-7 rounded-full px-2 text-[11px] text-muted" onClick={() => onChange({ enabled: !slot.enabled })}>
               {slot.enabled ? "An" : "Aus"}
@@ -590,6 +661,17 @@ function AccountCard({
           <option key={row.id} value={row.id}>{firmLabel(row)}</option>
         ))}
       </select>
+      <label className="mt-2 block text-[11px] text-muted">
+        Ausführung
+        <select
+          className="mt-1 h-10 w-full rounded-xl border border-line bg-surface px-2 text-sm text-fg"
+          value={slot.fill}
+          onChange={(event) => onChange({ fill: event.target.value === "limit" ? "limit" : "market" })}
+        >
+          <option value="market">Market</option>
+          <option value="limit">Limit</option>
+        </select>
+      </label>
       <div className="mt-2 grid grid-cols-2 gap-2">
         <select
           className="h-11 rounded-xl border border-line bg-surface px-2 text-sm text-fg"
@@ -685,6 +767,31 @@ function AccountCard({
   );
 }
 
+function camouflageTp(account: PropAccount, entry: number, dirtyPct: number | null): number | null {
+  if (account.phase !== "challenge" || dirtyPct == null || !(entry > 0)) return null;
+  const gap = account.account * (dirtyPct / 100);
+  const need = gap + Math.abs(account.positionUsd) * (account.rtFeePct / 100);
+  if (!(Math.abs(account.positionUsd) > 0) || !(need > 0)) return null;
+  const price = entry * (1 + need / account.positionUsd);
+  return price > 0 ? price : null;
+}
+
+function fmtPx(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 100) return abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (abs >= 1) return abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  if (abs >= 0.01) return abs.toFixed(5);
+  return abs.toPrecision(4);
+}
+
+function copyPx(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 100) return abs.toFixed(2);
+  if (abs >= 1) return abs.toFixed(4);
+  if (abs >= 0.01) return abs.toFixed(5);
+  return abs.toPrecision(4);
+}
+
 function Ticket({
   account,
   plan,
@@ -700,50 +807,121 @@ function Ticket({
 }) {
   const preset = presets.find((row) => row.id === account.presetId);
   const orders = orderPrices(account, entry, plan.sl, plan.side, pass);
-  const remaining = maxDdUsd(account) - Math.abs(account.positionUsd) * ((pass == null ? 0 : Math.abs(pass)) + account.rtFeePct / 100);
-  const guard = account.phase === "funded" && remaining < 50;
-  const sl = guard ? safetyStop(account, entry) ?? orders.sl : orders.sl;
+  const fail = failFraction(plan.side, plan.sl);
   const short = account.phase === "challenge" ? plan.side === "evals-short" : plan.side !== "evals-short";
   const coins = entry > 0 ? Math.abs(account.positionUsd / entry) : 0;
   const usd = Math.abs(account.positionUsd);
+  const human = plan.humanRound !== false;
+  const share = plan.layerShare != null && plan.layerShare > 0 && plan.layerShare < 1 ? plan.layerShare : 0.55;
+  const total = human ? Math.round(coins * 100) / 100 : coins;
+  const layer1 = human ? Math.round(total * share * 100) / 100 : total * share;
+  const layer2 = human ? Math.round((total - layer1) * 100) / 100 : total - layer1;
+  const qty = (value: number) => (human ? value.toFixed(2) : value.toFixed(4));
   const leverage = account.account > 0 ? Math.abs(account.positionUsd) / account.account : 0;
   const openFee = Math.abs(account.positionUsd) * ((account.openFeePct ?? account.rtFeePct / 2) / 100);
-  const fee = account.phase === "challenge" ? openFee : Math.abs(account.positionUsd) * (account.rtFeePct / 100);
+  const rtFee = Math.abs(account.positionUsd) * (account.rtFeePct / 100);
+  const economicTp = account.phase === "challenge" ? orders.tp : entry > 0 ? entry * (1 + fail) : null;
+  const mainTp = (account.phase === "challenge" ? camouflageTp(account, entry, plan.dirtyTarget) : null) ?? economicTp;
+  const tpMove = mainTp != null && entry > 0 ? mainTp / entry - 1 : fail;
+  const sign = Math.sign(tpMove || fail || 1) || 1;
+  const before = mainTp != null && entry > 0 ? mainTp - sign * entry * 0.0006 : null;
+  const behind = (() => {
+    if (mainTp == null || !(entry > 0)) return null;
+    if (account.phase === "challenge" && before != null && layer2 > 0) {
+      return (mainTp * (layer1 + layer2) - before * layer1) / layer2;
+    }
+    return mainTp + sign * entry * 0.0007;
+  })();
+  const dummy = entry > 0 ? entry * (1 + Math.sign(fail || 1) * 0.035) : null;
   const slMove = orders.sl != null && entry > 0 ? (orders.sl / entry - 1) * 100 : null;
-  const tpMove = orders.tp != null && entry > 0 ? (orders.tp / entry - 1) * 100 : null;
-  const slShown = sl != null && entry > 0 ? (sl / entry - 1) * 100 : slMove;
+  const layerA = Math.round(share * 100);
+  const layerNote = `${layerA}% / ${100 - layerA}%`;
+  const failPct = `${fail >= 0 ? "+" : ""}${(fail * 100).toFixed(2)}%`;
+  const px = (value: number | null) => (value != null && Number.isFinite(value) ? fmtPx(value) : "—");
+  const layer1Px = account.phase === "funded" ? mainTp : before;
   return (
     <article className="rounded-2xl border border-line bg-bg p-3">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold">{account.phase === "funded" ? "Funded" : "Eval"}</h3>
-          <p className="text-xs text-muted">{preset ? firmLabel(preset) : "Firma"}</p>
+          <h3 className="text-sm font-semibold">{account.phase === "funded" ? "Funded" : account.name}</h3>
+          <p className="text-xs text-muted">{preset?.name ?? "Firma"}</p>
+          <p className="mt-1 text-[11px] text-faint">🔐 {preset?.wallet?.trim() || "Wallet nicht hinterlegt"}</p>
         </div>
         <span className={cn("rounded-full px-2 py-1 text-xs font-semibold", short ? "bg-short/20 text-short" : "bg-long/20 text-long")}>
           {short ? "SHORT / VERKAUFEN" : "LONG / KAUFEN"}
         </span>
       </div>
-      <CopyRow label="Stückzahl (Coins / Lots)" value={coins} text={coins.toFixed(4)} />
-      <CopyRow label="Positionsgröße in USD" value={usd} text={fmtUsd(usd)} hint={`Hebel ${leverage.toFixed(2)}× · Fee ${fmtUsd(fee)}`} />
-      <CopyRow label="Take-Profit Kurs" value={orders.tp} text={orders.tp != null ? fmtIndex(orders.tp) : "—"} hint={tpMove != null ? `bei ${tpMove >= 0 ? "+" : ""}${tpMove.toFixed(2)}% Kursbewegung` : ""} />
+      <CopyRow label="Gesamt-Stückzahl (Coins/Lots)" value={total} text={qty(total)} copyText={qty(total)} />
       <CopyRow
-        label="Stop-Loss Kurs"
-        value={sl}
-        text={sl != null ? fmtIndex(sl) : "—"}
-        warn={guard}
+        label="Positionsgröße USD"
+        value={usd}
+        text={fmtUsd(usd)}
+        copyText={usd.toFixed(2)}
         hint={
           account.phase === "challenge"
-            ? "Kein SL nötig. Konto schließt bei diesem Kurs automatisch durch den Equity-Breach, ohne Closing-Fee."
-            : slShown != null
-              ? `bei ${slShown >= 0 ? "+" : ""}${slShown.toFixed(2)}%${guard ? " · Sicherheits-SL bei 95% Max-DD" : ""}`
-              : ""
+            ? `Hebel ${leverage.toFixed(2)}× · Fee ${fmtUsd(openFee)} (Breach) / ${fmtUsd(rtFee)} (TP)`
+            : `Hebel ${leverage.toFixed(2)}× · Fee ${fmtUsd(rtFee)} Round-Trip`
         }
       />
+      <div className="mt-3 rounded-xl border border-line bg-surface p-3">
+        <p className="text-xs font-semibold">🛡️ 2-Schichten-Eingabe ({layerNote} Scaling-In)</p>
+        <p className="mt-2 text-[11px] text-muted">Schicht 1 · sofort von Hand eintippen</p>
+        <CopyRow label="Menge Schicht 1" value={layer1} text={qty(layer1)} copyText={qty(layer1)} />
+        <CopyRow
+          label="Kurs / Preisalarm Schicht 1"
+          value={layer1Px}
+          text={px(layer1Px)}
+          copyText={layer1Px != null ? copyPx(layer1Px) : undefined}
+          hint={account.phase === "funded" ? `Echter ${failPct}-Zielkurs. Hier die erste Hälfte schließen.` : "0,06% vor dem Haupt-TP."}
+        />
+        <p className="mt-2 text-[11px] text-muted">Schicht 2 · nach 3–5 Min. nachlegen</p>
+        <CopyRow label="Menge Schicht 2" value={layer2} text={qty(layer2)} copyText={qty(layer2)} />
+        <CopyRow
+          label="Kurs / Preisalarm Schicht 2"
+          value={behind}
+          text={px(behind)}
+          copyText={behind != null ? copyPx(behind) : undefined}
+          hint={account.phase === "funded" ? "0,07% hinter dem echten Schließ-Kurs." : "Liegt hinter dem Haupt-TP, sodass Schicht 1 und 2 im Schnitt exakt das Target treffen."}
+        />
+      </div>
+      {account.phase === "funded" ? (
+        <>
+          <CopyRow
+            label="👁️ Optischer Tarn-TP fürs Orderbuch (+3,50% Move)"
+            value={dummy}
+            text={px(dummy)}
+            copyText={dummy != null ? copyPx(dummy) : undefined}
+            hint="Diesen weiten Dummy-TP ins Orderbuch eintragen, damit das Chance-Risiko-Verhältnis für die Risk-Engine gesund (1:1) aussieht."
+          />
+          <CopyRow
+            label={`🔔 Echter Schließ-Kurs per Preisalarm (${failPct} Move)`}
+            value={mainTp}
+            text={px(mainTp)}
+            copyText={mainTp != null ? copyPx(mainTp) : undefined}
+            hint="Bei diesem Kurs den Funded-Trade manuell schließen, sobald die Evals gebreached sind."
+          />
+          <CopyRow
+            label="Stop-Loss Kurs (SL)"
+            value={orders.sl}
+            text={px(orders.sl)}
+            copyText={orders.sl != null ? copyPx(orders.sl) : undefined}
+            hint={slMove != null ? `Sicherheits-SL bei 95% Max-DD (${slMove >= 0 ? "+" : ""}${slMove.toFixed(2)}%), hinter dem Eval-TP.` : ""}
+          />
+        </>
+      ) : (
+        <CopyRow
+          label="Stop-Loss Kurs"
+          value={orders.sl}
+          text={px(orders.sl)}
+          copyText={orders.sl != null ? copyPx(orders.sl) : undefined}
+          hint="Keinen SL ins Orderbuch legen! Konto schließt bei diesem Kurs automatisch durch den Equity-Breach, ohne Closing-Fee. Für den TP den TradingView-Preisalarm nutzen."
+        />
+      )}
     </article>
   );
 }
 
-function CopyRow({ label, value, text, hint, warn }: { label: string; value: number | null; text: string; hint?: string; warn?: boolean }) {
+function CopyRow({ label, value, text, hint, warn, copyText }: { label: string; value: number | null; text: string; hint?: string; warn?: boolean; copyText?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="mt-3">
@@ -756,7 +934,8 @@ function CopyRow({ label, value, text, hint, warn }: { label: string; value: num
           disabled={value == null}
           onClick={() => {
             if (value == null) return;
-            void navigator.clipboard?.writeText(String(Math.abs(Math.round(value * 1e6) / 1e6)));
+            const raw = copyText ?? String(Math.abs(Math.round(value * 1e8) / 1e8));
+            void navigator.clipboard?.writeText(raw);
             setCopied(true);
             window.setTimeout(() => setCopied(false), 900);
           }}
@@ -781,11 +960,16 @@ function FirmManager({
   onClose: () => void;
 }) {
   useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener("keydown", onKey);
+    };
   }, [onClose]);
 
   const patch = (id: string, next: Partial<FirmPreset>) => {
@@ -800,7 +984,7 @@ function FirmManager({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-3 sm:items-center" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-3 sm:items-center">
       <div
         role="dialog"
         aria-labelledby="firm-manager-title"
@@ -816,59 +1000,72 @@ function FirmManager({
         </div>
         <div className="mt-4 grid gap-2">
           {presets.map((preset) => (
-            <div key={preset.id} className="grid items-end gap-2 rounded-xl bg-bg p-2 sm:grid-cols-[1.4fr_6rem_6rem_9rem_auto]">
-              <label className="text-[11px] text-muted">
-                Firmenname
+            <div key={preset.id} className="rounded-xl bg-bg p-2">
+              <div className="grid items-end gap-2 sm:grid-cols-[1fr_11rem_auto]">
+                <label className="text-[11px] text-muted">
+                  Firmenname
+                  <input
+                    className="mt-1 h-10 w-full rounded-xl border border-line bg-surface px-2 text-sm text-fg"
+                    value={preset.name}
+                    maxLength={48}
+                    onChange={(event) => patch(preset.id, { name: event.target.value })}
+                  />
+                </label>
+                <label className="text-[11px] text-muted">
+                  Handelsplattform
+                  <select
+                    className="mt-1 h-10 w-full rounded-xl border border-line bg-surface px-2 text-sm text-fg"
+                    value={preset.platform}
+                    onChange={(event) => patch(preset.id, { platform: event.target.value as FirmPreset["platform"] })}
+                  >
+                    {FIRM_PLATFORMS.map((platform) => (
+                      <option key={platform} value={platform}>{platform}</option>
+                    ))}
+                  </select>
+                </label>
+                {preset.custom ? (
+                  <button type="button" className="h-10 rounded-xl px-3 text-short" aria-label={`${preset.name} löschen`} onClick={() => onRemove(preset.id)}>
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <span className="hidden h-10 sm:block" />
+                )}
+              </div>
+              <label className="mt-2 block text-[11px] text-muted">
+                Wallet & Anti-Detect-Profil
                 <input
                   className="mt-1 h-10 w-full rounded-xl border border-line bg-surface px-2 text-sm text-fg"
-                  value={preset.name}
-                  maxLength={48}
-                  onChange={(event) => patch(preset.id, { name: event.target.value })}
+                  value={preset.wallet}
+                  maxLength={80}
+                  onChange={(event) => patch(preset.id, { wallet: event.target.value })}
                 />
               </label>
-              <label className="text-[11px] text-muted">
-                Maker-Gebühr %
-                <input
-                  className="mt-1 h-10 w-full rounded-xl border border-line bg-surface px-2 text-right font-mono text-sm text-fg"
-                  type="number"
-                  min={0}
-                  max={5}
-                  step={0.001}
-                  value={preset.makerPct}
-                  onChange={(event) => patch(preset.id, { makerPct: Number(event.target.value) })}
-                />
-              </label>
-              <label className="text-[11px] text-muted">
-                Taker-Gebühr %
-                <input
-                  className="mt-1 h-10 w-full rounded-xl border border-line bg-surface px-2 text-right font-mono text-sm text-fg"
-                  type="number"
-                  min={0}
-                  max={5}
-                  step={0.001}
-                  value={preset.takerPct}
-                  onChange={(event) => patch(preset.id, { takerPct: Number(event.target.value) })}
-                />
-              </label>
-              <label className="text-[11px] text-muted">
-                Handelsplattform
-                <select
-                  className="mt-1 h-10 w-full rounded-xl border border-line bg-surface px-2 text-sm text-fg"
-                  value={preset.platform}
-                  onChange={(event) => patch(preset.id, { platform: event.target.value as FirmPreset["platform"] })}
-                >
-                  {FIRM_PLATFORMS.map((platform) => (
-                    <option key={platform} value={platform}>{platform}</option>
-                  ))}
-                </select>
-              </label>
-              {preset.custom ? (
-                <button type="button" className="h-10 rounded-xl px-3 text-short" aria-label={`${preset.name} löschen`} onClick={() => onRemove(preset.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              ) : (
-                <span className="h-10" />
-              )}
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <label className="text-[11px] text-muted">
+                  Maker-Gebühr %
+                  <input
+                    className="mt-1 h-10 w-full rounded-xl border border-line bg-surface px-2 text-right font-mono text-sm text-fg"
+                    type="number"
+                    min={0}
+                    max={5}
+                    step={0.001}
+                    value={preset.makerPct}
+                    onChange={(event) => patch(preset.id, { makerPct: Number(event.target.value) })}
+                  />
+                </label>
+                <label className="text-[11px] text-muted">
+                  Taker-Gebühr %
+                  <input
+                    className="mt-1 h-10 w-full rounded-xl border border-line bg-surface px-2 text-right font-mono text-sm text-fg"
+                    type="number"
+                    min={0}
+                    max={5}
+                    step={0.001}
+                    value={preset.takerPct}
+                    onChange={(event) => patch(preset.id, { takerPct: Number(event.target.value) })}
+                  />
+                </label>
+              </div>
             </div>
           ))}
         </div>
@@ -887,6 +1084,7 @@ function FirmManager({
                   maxDdPct: 3,
                   targetPct: 9,
                   platform: "Eigenes System",
+                  wallet: "Neue Wallet · neues Profil",
                   custom: true,
                 },
               ])
@@ -907,76 +1105,114 @@ function stageLabel(plan: CyclePlan): string {
   return `${funded} Funded vs ${evals} Eval`;
 }
 
-type LedgerRow = {
-  date: string;
-  stage: string;
-  costs: number;
-  payout: number;
-  net: number;
-  won: number;
-};
+function taxLines(
+  kind: "breach" | "pass",
+  evals: PropAccount[],
+  funds: PropAccount[],
+  presets: FirmPreset[],
+  payout: number,
+  fxRate: number,
+): Omit<TaxRow, "nr">[] {
+  const fx = fxRate > 0 ? fxRate : 1.09;
+  const toEur = (usd: number) => Math.round((usd / fx) * 100) / 100;
+  const stamp = new Date().toISOString();
+  const rows: Omit<TaxRow, "nr">[] = evals.map((account) => {
+    const preset = presets.find((row) => row.id === account.presetId);
+    const usd = -Math.round(Math.abs(account.cost) * 100) / 100;
+    return {
+      date: stamp,
+      text: `${kind === "breach" ? "Eval-Kauf (Breach)" : "Eval-Kauf (Rotation)"} ${account.name} · ${preset?.name ?? "Firma"}`,
+      wallet: preset?.wallet?.trim() || "—",
+      usd,
+      fx,
+      eur: toEur(usd),
+    };
+  });
+  if (kind === "breach") {
+    const names = funds.map((account) => presets.find((row) => row.id === account.presetId)?.name ?? account.name).join(" + ");
+    const wallet = presets.find((row) => row.id === funds[0]?.presetId)?.wallet?.trim() || "—";
+    const usd = Math.round(payout * 100) / 100;
+    rows.push({ date: stamp, text: `Payout ${names || "Funded"}`, wallet, usd, fx, eur: toEur(usd) });
+  }
+  return rows;
+}
 
-const LEDGER_KEY = "position-builder.ledger.v1";
-
-function loadLedger(): LedgerRow[] {
+function loadLedger(): TaxRow[] {
   try {
-    const raw = window.localStorage.getItem(LEDGER_KEY);
+    const raw = window.localStorage.getItem(TAX_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((row): row is LedgerRow => !!row && typeof row === "object" && typeof (row as LedgerRow).date === "string");
+    return parsed.filter((row): row is TaxRow => {
+      if (!row || typeof row !== "object") return false;
+      const item = row as TaxRow;
+      return typeof item.nr === "number" && typeof item.date === "string" && typeof item.usd === "number";
+    });
   } catch {
     return [];
   }
 }
 
-function Ledger({ rows }: { rows: LedgerRow[] }) {
+function Ledger({ rows, onClear }: { rows: TaxRow[]; onClear: () => void }) {
   return (
     <details className="mt-4 rounded-xl border border-line p-3">
-      <summary className="cursor-pointer text-sm font-semibold">Mein Steuer- & Trade-Logbuch (EÜR)</summary>
+      <summary className="cursor-pointer text-sm font-semibold">📄 Mein 7-Spalten Steuer-Logbuch (GoBD / EÜR)</summary>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted">{rows.length} Einträge</p>
-        <Button onClick={() => downloadLedger(rows)} disabled={rows.length === 0}>
-          Als CSV für Excel / Steuer exportieren
-        </Button>
+        <p className="text-xs text-muted">{rows.length} Buchungen · EUR = USD / BMF-Kurs</p>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => downloadLedger(rows)} disabled={rows.length === 0}>
+            📥 Als CSV für Excel / Finanzamt exportieren
+          </Button>
+          <Button onClick={onClear} disabled={rows.length === 0}>🗑️ Logbuch leeren</Button>
+        </div>
       </div>
       {rows.length ? (
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full min-w-[760px] text-left text-xs">
             <thead className="text-muted">
               <tr>
+                <th className="px-2 py-1 font-medium">Lfd. Nr.</th>
                 <th className="px-2 py-1 font-medium">Datum</th>
-                <th className="px-2 py-1 font-medium">Stufe</th>
-                <th className="px-2 py-1 font-medium">Eval-Ausgaben ($)</th>
-                <th className="px-2 py-1 font-medium">Brutto-Payout ($)</th>
-                <th className="px-2 py-1 font-medium">Netto-Cash-Ergebnis ($)</th>
-                <th className="px-2 py-1 font-medium">Gewonnene Funded-Konten</th>
+                <th className="px-2 py-1 font-medium">Vorgang & Prop-Firm</th>
+                <th className="px-2 py-1 font-medium">Genutzte Wallet</th>
+                <th className="px-2 py-1 font-medium">Betrag USD</th>
+                <th className="px-2 py-1 font-medium">BMF-Kurs</th>
+                <th className="px-2 py-1 font-medium">Betrag EUR</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={`${row.date}-${row.stage}`} className="border-t border-line">
-                  <td className="px-2 py-1 whitespace-nowrap">{new Date(row.date).toLocaleString("de-DE")}</td>
-                  <td className="px-2 py-1">{row.stage}</td>
-                  <td className="px-2 py-1 font-mono">{fmtUsd(row.costs)}</td>
-                  <td className="px-2 py-1 font-mono">{fmtUsd(row.payout)}</td>
-                  <td className="px-2 py-1 font-mono">{fmtUsd(row.net, true)}</td>
-                  <td className="px-2 py-1 font-mono">{row.won}</td>
+                <tr key={`${row.nr}-${row.date}-${row.text}`} className="border-t border-line">
+                  <td className="px-2 py-1 font-mono">{row.nr}</td>
+                  <td className="px-2 py-1 whitespace-nowrap">{new Date(row.date).toLocaleDateString("de-DE")}</td>
+                  <td className="px-2 py-1">{row.text}</td>
+                  <td className="px-2 py-1">{row.wallet}</td>
+                  <td className="px-2 py-1 font-mono">{fmtUsd(row.usd, true)}</td>
+                  <td className="px-2 py-1 font-mono">{row.fx.toFixed(4)}</td>
+                  <td className="px-2 py-1 font-mono">{row.eur.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <p className="mt-2 text-xs text-muted">Noch kein Abschluss gebucht.</p>
+        <p className="mt-2 text-xs text-muted">Noch keine Buchung. Ein Abschluss oben schreibt die Eval-Ausgaben und, beim Breach, das Payout.</p>
       )}
     </details>
   );
 }
 
-function downloadLedger(rows: LedgerRow[]): void {
-  const header = ["Datum", "Stufe", "Eval-Ausgaben ($)", "Brutto-Payout ($)", "Netto-Cash-Ergebnis ($)", "Gewonnene Funded-Konten"];
-  const body = rows.map((row) => [new Date(row.date).toLocaleString("de-DE"), row.stage, row.costs, row.payout, row.net, row.won]);
+function downloadLedger(rows: TaxRow[]): void {
+  const header = ["Lfd. Nr.", "Datum", "Vorgang & Prop-Firm", "Genutzte Wallet", "Betrag USD", "BMF-Kurs", "Betrag EUR"];
+  const body = rows.map((row) => [
+    row.nr,
+    new Date(row.date).toLocaleDateString("de-DE"),
+    row.text,
+    row.wallet,
+    row.usd.toFixed(2).replace(".", ","),
+    row.fx.toFixed(4).replace(".", ","),
+    row.eur.toFixed(2).replace(".", ","),
+  ]);
   const csv = [header, ...body]
     .map((line) => line.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(";"))
     .join("\n");

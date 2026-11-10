@@ -16,7 +16,7 @@ export function Button({
         "press inline-flex h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40",
         tone === "buy" && "bg-long text-bg hover:opacity-90",
         tone === "sell" && "bg-short text-bg hover:opacity-90",
-        tone === "accent" && "bg-fg text-bg hover:opacity-90",
+        tone === "accent" && "bg-accent text-on-accent hover:opacity-90",
         tone === "ghost" && "bg-raised text-fg hover:opacity-90",
         className,
       )}

@@ -103,7 +103,7 @@ var HEADERS = { TSS_SHELL: "X-TSS_SHELL" };
 * the dev styles URL for route-scoped CSS collection.
 */
 async function getStartManifest(matchedRoutes) {
-	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-Ct3Xh3Eu.mjs");
+	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-2dAuvjeV.mjs");
 	const startManifest = tsrStartManifest();
 	let routes = startManifest.routes;
 	routes[rootRouteId];
@@ -126,10 +126,6 @@ var manifest = {
 	"68fc9cfa76a1152d748e7581eed7103c405b842372b50c9e26464ca80623e2e9": {
 		functionName: "fetchDerive_createServerFn_handler",
 		importer: () => import("./derive-public-CkaYFmbC.mjs")
-	},
-	"6fca57093f3beb8b20e58f64786cdbeeeae2910ede8f7b073df450eaaabc46fd": {
-		functionName: "askHydra_createServerFn_handler",
-		importer: () => import("./hydra-chat-RRnWFgop.mjs")
 	},
 	"7c9b478a7b6fe28493e24faf266f62ff2ba4397c816ad242ec025257b3ea47c1": {
 		functionName: "fetchDeribit_createServerFn_handler",
@@ -1538,7 +1534,7 @@ var getBaseManifest = getProdBaseManifest;
 var createEarlyHintsForRequest = createEarlyHintsCollector;
 async function loadEntries() {
 	const [routerEntry, startEntry, pluginAdapters] = await Promise.all([
-		import("./router-BB1SZn5e.mjs").then((n) => n.t),
+		import("./router-BbiIuSdS.mjs").then((n) => n.t),
 		import("./start-5Z2QO8AU.mjs"),
 		import("./empty-plugin-adapters-D9UWiqvJ.mjs")
 	]);

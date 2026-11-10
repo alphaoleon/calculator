@@ -1,22 +1,28 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500&family=Roboto:wght@400;500;700&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #07080a;
-  --color-surface: #121316;
-  --color-raised: #1c1d22;
-  --color-line: #2c2e36;
-  --color-fg: #f4f5f7;
-  --color-muted: #9aa0ab;
-  --color-faint: #6d7380;
-  --color-accent: #4c8dff;
-  --color-preview: #e6a23c;
-  --color-long: #1fbf75;
-  --color-short: #f0445a;
-  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
-  --radius-card: 1.25rem;
-  --shadow-card: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --color-bg: #0a0b0d;
+  --color-surface: #141519;
+  --color-raised: #1e2025;
+  --color-line: #32353d;
+  --color-fg: #ffffff;
+  --color-muted: #a5aab6;
+  --color-faint: #6b7280;
+  --color-accent: #578bfa;
+  --color-accent-soft: #011d5b;
+  --color-on-accent: #ffffff;
+  --color-preview: #96ccff;
+  --color-long: #49cc90;
+  --color-short: #ff5f5f;
+  --color-expiry: #c4b5fd;
+  --color-roll: #f5c518;
+  --color-tip: #1e2025;
+  --color-tip-fg: #ffffff;
+  --font-sans: "Roboto", "Helvetica", Arial, sans-serif;
+  --font-mono: "Roboto Mono", ui-monospace, monospace;
+  --radius-card: 8px;
+  --shadow-card: none;
 }
 
 @layer base {
@@ -30,6 +36,7 @@
     background: var(--color-bg);
     color: var(--color-fg);
     font-family: var(--font-sans);
+    font-size: 13px;
     min-height: 100%;
     color-scheme: dark;
   }
@@ -42,6 +49,10 @@
     accent-color: var(--color-accent);
     width: 100%;
     height: 1.75rem;
+  }
+
+  input[type="checkbox"] {
+    accent-color: var(--color-accent);
   }
 
   summary {
@@ -110,40 +121,239 @@
 
 .desk-shell {
   position: relative;
+  background: var(--color-bg);
 }
 
-.desk-shell::before {
-  content: "";
-  pointer-events: none;
-  position: fixed;
-  inset: 0 0 auto 0;
-  height: 28rem;
-  background: radial-gradient(
-    ellipse 80% 70% at 50% -20%,
-    color-mix(in srgb, var(--color-fg) 22%, transparent),
-    transparent 68%
-  );
-  z-index: 0;
+.pb-top {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-height: 58px;
+  padding: 0 8px;
+  background: var(--color-raised);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.pb-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 8px;
+  color: var(--color-fg);
+}
+
+.pb-mark {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pb-name {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.pb-name small {
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.pb-tabs {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  gap: 2px;
+}
+
+.pb-tab {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  max-width: 16rem;
+  padding: 6px 16px 8px;
+  border: 0;
+  border-top: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-muted);
+  text-align: left;
+}
+
+.pb-tab strong {
+  font-size: 13px;
+  font-weight: 500;
+  color: inherit;
+}
+
+.pb-tab small {
+  font-size: 11px;
+  color: var(--color-faint);
+}
+
+.pb-tab[aria-selected="true"] {
+  background: var(--color-accent-soft);
+  border-top-color: var(--color-accent);
+  color: var(--color-fg);
+}
+
+.pb-tab[aria-selected="true"] small {
+  color: var(--color-accent);
+}
+
+.pb-tools {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  padding-left: 8px;
+}
+
+.pb-outline {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 50%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-accent);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.desk-shell h1 {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.3;
+}
+
+.desk-shell h2,
+.desk-shell h3 {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.desk-shell section > h2,
+.desk-shell section > :first-child:has(> h2) {
+  margin: -1rem -1rem 0.75rem;
+  padding: 8px 12px;
+  background: var(--color-raised);
+  border-bottom: 1px solid var(--color-line);
+  border-radius: 7px 7px 0 0;
+}
+
+.desk-shell .pb-head {
+  margin: -0.75rem -0.75rem 0.75rem;
+  padding: 8px 12px;
+  background: var(--color-raised);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.desk-shell .bg-fg.text-bg {
+  background-color: var(--color-accent-soft);
+  color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+.desk-shell .bg-long.text-bg,
+.desk-shell .bg-short.text-bg {
+  color: var(--color-on-accent);
+}
+
+.desk-shell button {
+  border-radius: 6px;
+}
+
+.desk-shell .pb-tab {
+  border-radius: 0;
+  align-self: stretch;
+  height: auto;
+}
+
+.desk-shell input:not([type="checkbox"]):not([type="range"]):not([type="radio"]),
+.desk-shell select {
+  height: 32px;
+  border-radius: 6px;
+  border-color: var(--color-line);
+  background: var(--color-bg);
+  font-size: 13px;
+}
+
+.desk-shell input[type="range"] {
+  height: 16px;
+}
+
+.desk-shell table {
+  font-size: 12.5px;
+  border-collapse: collapse;
+}
+
+.desk-shell th {
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.desk-shell tbody tr {
+  border-top: 1px solid var(--color-line);
+}
+
+.desk-shell .rounded-2xl,
+.desk-shell .rounded-xl {
+  border-radius: 8px;
+}
+
+@media (max-width: 720px) {
+  .pb-top {
+    flex-wrap: wrap;
+    height: auto;
+  }
+
+  .pb-tabs {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .pb-name small {
+    display: none;
+  }
 }
 
 /* Light desk. Dark stays the @theme default so the first paint matches. */
 html[data-theme="light"] {
   color-scheme: light;
-  --color-bg: #e7eaef;
+  --color-bg: #f3f4f6;
   --color-surface: #ffffff;
-  --color-raised: #f3f5f8;
-  --color-line: #e1e5ec;
-  --color-fg: #12141a;
-  --color-muted: #5c6570;
-  --color-faint: #808894;
-  --color-accent: #1d6fe3;
-  --color-preview: #b26b12;
-  --color-long: #0c8a52;
-  --color-short: #d21f38;
-  --shadow-card:
-    0 0 0 1px rgba(0, 0, 0, 0.06),
-    0 1px 2px -1px rgba(0, 0, 0, 0.06),
-    0 12px 32px -16px rgba(0, 0, 0, 0.18);
+  --color-raised: #f7f8fa;
+  --color-line: #e1e4ea;
+  --color-fg: #111318;
+  --color-muted: #5c6573;
+  --color-faint: #8b919c;
+  --color-accent: #3b74f2;
+  --color-accent-soft: #e7efff;
+  --color-on-accent: #ffffff;
+  --color-preview: #3b74f2;
+  --color-long: #0f9f6e;
+  --color-short: #e23b3b;
+  --color-expiry: #6d28d9;
+  --color-roll: #b8860b;
+  --color-tip: #ffffff;
+  --color-tip-fg: #111318;
+  --shadow-card: 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
 html,

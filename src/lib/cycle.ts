@@ -43,6 +43,14 @@ export type CyclePlan = {
   eval2: CycleSlot;
   /** Signed notionals, same order as the enabled book. Null means pure auto-sync. */
   fuzz: number[] | null;
+  /** Camouflage target in percent, e.g. 9.22. Null keeps the real target. */
+  dirtyTarget: number | null;
+  /** Share of size that goes into layer 1. Null means 55/45. */
+  layerShare: number | null;
+  /** Round displayed coin sizes to 2 decimals. */
+  humanRound: boolean;
+  /** EURUSD monthly rate. EUR = USD / fx. */
+  fx: number;
   note: string;
 };
 
@@ -64,25 +72,31 @@ export function defaultPlan(): CyclePlan {
     sl: 1,
     discount: 0,
     extra: 0,
-    hedge: "balanced",
-    funded: [slot("funded-1", 10_000, "zero")],
-    eval1: slot("eval-1", 10_000, "low"),
-    eval2: slot("eval-2", 5_000, "hn-crypto"),
+    hedge: "manual",
+    funded: [slot("funded-1", 10_000, "breakout")],
+    eval1: slot("eval-1", 10_000, "hypernova"),
+    eval2: slot("eval-2", 5_000, "cashed"),
     fuzz: null,
+    dirtyTarget: null,
+    layerShare: null,
+    humanRound: true,
+    fx: 1.09,
     note: "",
   };
 }
 
 export function applyTemplate(plan: CyclePlan, funded: AccountSize[], evals: AccountSize[]): CyclePlan {
-  const fundedPresets = ["zero", "hn-eq"];
-  const evalPresets = ["low", "hn-crypto"];
+  const fundedPresets = ["breakout", "hypernova"];
+  const evalPresets = ["cashed", "iceberg"];
   return {
     ...plan,
     fuzz: null,
+    dirtyTarget: null,
+    layerShare: null,
     note: "",
-    funded: funded.map((size, index) => slot(`funded-${index + 1}`, size, fundedPresets[index] ?? "hn-crypto")),
-    eval1: slot("eval-1", evals[0] ?? 10_000, evalPresets[0] ?? "low"),
-    eval2: slot("eval-2", evals[1] ?? evals[0] ?? 10_000, evalPresets[1] ?? "hn-crypto", evals.length > 1),
+    funded: funded.map((size, index) => slot(`funded-${index + 1}`, size, fundedPresets[index] ?? "hypernova")),
+    eval1: slot("eval-1", evals[0] ?? 10_000, evalPresets[0] ?? "cashed"),
+    eval2: slot("eval-2", evals[1] ?? evals[0] ?? 10_000, evalPresets[1] ?? "iceberg", evals.length > 1),
   };
 }
 
@@ -169,7 +183,9 @@ function slotAccount(row: CycleSlot, phase: PropAccount["phase"], presets: FirmP
     balance: row.size,
     ddLimit: Math.round((row.size - dd) * 100) / 100,
     dailyLimit: 0,
-    profitTarget: phase === "challenge" ? Math.round(row.size * (1 + targetPercent(row, preset) / 100) * 100) / 100 : 0,
+    profitTarget: phase === "challenge"
+      ? Math.round(row.size * (1 + targetPercent(row, preset) / 100) * 100) / 100
+      : 0,
     cost: phase === "challenge" ? Math.round(list * (1 - discount) * 100) / 100 : 0,
     split: row.split,
     positionUsd: 0,
@@ -201,6 +217,10 @@ export function loadPlan(): CyclePlan {
       eval1: cleanSlot(parsed.eval1, "eval-1"),
       eval2: cleanSlot(parsed.eval2, "eval-2"),
       fuzz: Array.isArray(parsed.fuzz) ? parsed.fuzz.filter((row) => typeof row === "number") : null,
+      dirtyTarget: typeof parsed.dirtyTarget === "number" && parsed.dirtyTarget >= 8 && parsed.dirtyTarget <= 12 ? parsed.dirtyTarget : null,
+      layerShare: typeof parsed.layerShare === "number" && parsed.layerShare >= 0.5 && parsed.layerShare <= 0.7 ? parsed.layerShare : null,
+      humanRound: parsed.humanRound !== false,
+      fx: num(parsed.fx, 1.09, 0.5, 2),
       note: typeof parsed.note === "string" ? parsed.note : "",
     };
   } catch {
@@ -212,12 +232,19 @@ export function savePlan(plan: CyclePlan): void {
   window.localStorage.setItem(CYCLE_KEY, JSON.stringify(plan));
 }
 
+function presetIdOf(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) return "breakout";
+  if (value.startsWith("firm-")) return value.slice(0, 64);
+  const known = ["breakout", "hypernova", "cashed", "iceberg", "propr", "bungee"];
+  return known.includes(value) ? value : "breakout";
+}
+
 function cleanSlot(raw: unknown, id: string): CycleSlot {
   const row = raw && typeof raw === "object" ? (raw as Partial<CycleSlot>) : {};
   return {
     id,
     enabled: row.enabled !== false,
-    presetId: typeof row.presetId === "string" ? row.presetId : "hn-crypto",
+    presetId: presetIdOf(row.presetId),
     size: asSize(typeof row.size === "number" ? row.size : 10_000),
     fill: row.fill === "limit" ? "limit" : "market",
     split: num(row.split, 80, 50, 100),
@@ -228,9 +255,10 @@ function cleanSlot(raw: unknown, id: string): CycleSlot {
   };
 }
 
-function hedgeOf(value: unknown, extra: number): HedgeMode {
-  if (value === "safe" || value === "balanced" || value === "max" || value === "manual") return value;
-  return extra > 0 ? "manual" : "balanced";
+function hedgeOf(value: unknown, _extra: number): HedgeMode {
+  if (value === "manual" || value === "safe" || value === "balanced") return "manual";
+  if (value === "auto" || value === "max") return "auto";
+  return "manual";
 }
 
 function optionalPct(value: unknown, min: number, max: number): number | null {

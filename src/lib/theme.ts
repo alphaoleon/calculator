@@ -2,8 +2,8 @@ export const THEME_KEY = "position-builder.theme";
 
 export type ThemeName = "dark" | "light";
 
-const PAPER = "#e7eaef";
-const INK = "#07080a";
+const PAPER = "#f3f4f6";
+const INK = "#0a0b0d";
 
 export function currentTheme(): ThemeName {
   if (typeof document === "undefined") return "dark";

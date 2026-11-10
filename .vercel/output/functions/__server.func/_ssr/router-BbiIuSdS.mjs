@@ -2,8 +2,8 @@ import { i as __toESM, n as __exportAll } from "../_runtime.mjs";
 import { J as require_react, _ as lazyRouteComponent, b as useRouter, f as Scripts, g as Outlet, h as createRouter, p as HeadContent, v as createFileRoute, x as require_jsx_runtime, y as createRootRoute } from "../_libs/@tanstack/react-router+[...].mjs";
 import { t as TriangleAlert } from "../_libs/lucide-react.mjs";
 import { a as union, i as string, n as number, r as object, t as literal } from "../_libs/zod.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/router-BB1SZn5e.js
-var router_BB1SZn5e_exports = /* @__PURE__ */ __exportAll({ getRouter: () => getRouter });
+//#region node_modules/.nitro/vite/services/ssr/assets/router-BbiIuSdS.js
+var router_BbiIuSdS_exports = /* @__PURE__ */ __exportAll({ getRouter: () => getRouter });
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var FALLBACK_MESSAGE = "An unexpected error occurred. Try reloading the page.";
@@ -331,7 +331,7 @@ function PreviewHostBridge() {
 	}, [router]);
 	return null;
 }
-var styles_default = "/assets/styles-BkR8nG-s.css";
+var styles_default = "/assets/styles-QJUKjHM4.css";
 var APP_NAME = "Position Builder";
 var Route$1 = createRootRoute({
 	head: () => ({
@@ -348,7 +348,7 @@ var Route$1 = createRootRoute({
 			},
 			{
 				name: "theme-color",
-				content: "#07080a"
+				content: "#0a0b0d"
 			}
 		],
 		links: [
@@ -374,14 +374,14 @@ var Route$1 = createRootRoute({
 	component: () => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("html", {
 		lang: "en",
 		suppressHydrationWarning: true,
-		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("head", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("script", { dangerouslySetInnerHTML: { __html: "(function(){try{var t=localStorage.getItem(\"position-builder.theme\");if(t!==\"light\"&&t!==\"dark\")t=\"dark\";var r=document.documentElement;r.setAttribute(\"data-theme\",t);r.style.colorScheme=t;r.style.backgroundColor=t===\"light\"?\"#e7eaef\":\"#07080a\";}catch(e){}})();" } }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(HeadContent, {})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("body", { children: [
+		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("head", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("script", { dangerouslySetInnerHTML: { __html: "(function(){try{var t=localStorage.getItem(\"position-builder.theme\");if(t!==\"light\"&&t!==\"dark\")t=\"dark\";var r=document.documentElement;r.setAttribute(\"data-theme\",t);r.style.colorScheme=t;r.style.backgroundColor=t===\"light\"?\"#f3f4f6\":\"#0a0b0d\";}catch(e){}})();" } }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(HeadContent, {})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("body", { children: [
 			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(PreviewHostBridge, {}),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(AuthProvider, { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Outlet, {}) }),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Scripts, {})
 		] })]
 	})
 });
-var $$splitComponentImporter = () => import("./routes-CXcET20j.mjs");
+var $$splitComponentImporter = () => import("./routes-BaLXFKQ9.mjs");
 var rootRouteChildren = { IndexRoute: createFileRoute("/")({ component: lazyRouteComponent($$splitComponentImporter, "component") }).update({
 	id: "/",
 	path: "/",
@@ -396,4 +396,4 @@ function getRouter() {
 	});
 }
 //#endregion
-export { getRouter, router_BB1SZn5e_exports as t };
+export { getRouter, router_BbiIuSdS_exports as t };

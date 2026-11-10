@@ -16,7 +16,7 @@ export const Route = createRootRoute({
         content:
           "Options position builder for BTC, ETH, SOL and HYPE. Inverse and USDC books, live Deribit marks, payoff, and greeks.",
       },
-      { name: "theme-color", content: "#07080a" },
+      { name: "theme-color", content: "#0a0b0d" },
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
@@ -31,7 +31,7 @@ export const Route = createRootRoute({
         <script
           dangerouslySetInnerHTML={{
             __html:
-              '(function(){try{var t=localStorage.getItem("position-builder.theme");if(t!=="light"&&t!=="dark")t="dark";var r=document.documentElement;r.setAttribute("data-theme",t);r.style.colorScheme=t;r.style.backgroundColor=t==="light"?"#e7eaef":"#07080a";}catch(e){}})();',
+              '(function(){try{var t=localStorage.getItem("position-builder.theme");if(t!=="light"&&t!=="dark")t="dark";var r=document.documentElement;r.setAttribute("data-theme",t);r.style.colorScheme=t;r.style.backgroundColor=t==="light"?"#f3f4f6":"#0a0b0d";}catch(e){}})();',
           }}
         />
         <HeadContent />

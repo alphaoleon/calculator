@@ -28,16 +28,19 @@ export type FirmPreset = {
   maxDdPct: number;
   targetPct: number;
   platform: FirmPlatform;
+  /** Wallet and anti-detect profile, shown on the order ticket. */
+  wallet: string;
   /** False for the built-in presets. Only custom firms can be deleted. */
   custom: boolean;
 };
 
 export const DEFAULT_PRESETS: FirmPreset[] = [
-  { id: "zero", name: "Zero-Fee Firm", makerPct: 0, takerPct: 0, rtPct: 0, split: 80, maxDdPct: 3, targetPct: 9, platform: "Eigenes System", custom: false },
-  { id: "low", name: "Low-Fee Crypto", makerPct: 0, takerPct: 0.015, rtPct: 0.03, split: 80, maxDdPct: 3, targetPct: 9, platform: "Eigenes System", custom: false },
-  { id: "hn-crypto", name: "Hypernova Crypto", makerPct: 0.01, takerPct: 0.04, rtPct: 0.08, split: 80, maxDdPct: 3, targetPct: 9, platform: "Eigenes System", custom: false },
-  { id: "hn-fx", name: "Hypernova Gold/Index/FX", makerPct: 0, takerPct: 0.005, rtPct: 0.01, split: 80, maxDdPct: 3, targetPct: 9, platform: "Eigenes System", custom: false },
-  { id: "hn-eq", name: "Hypernova Equities", makerPct: 0, takerPct: 0.03, rtPct: 0.06, split: 80, maxDdPct: 3, targetPct: 9, platform: "Eigenes System", custom: false },
+  { id: "breakout", name: "Breakout", makerPct: 0.035, takerPct: 0.035, rtPct: 0.07, split: 80, maxDdPct: 3, targetPct: 9, platform: "Eigenes System", wallet: "OneKey #1 · Dolphin Profil 1", custom: false },
+  { id: "hypernova", name: "Hypernova", makerPct: 0.01, takerPct: 0.04, rtPct: 0.08, split: 80, maxDdPct: 3, targetPct: 9, platform: "Eigenes System", wallet: "OneKey #2 · Dolphin Profil 2", custom: false },
+  { id: "cashed", name: "cashed.fun", makerPct: 0.02, takerPct: 0.05, rtPct: 0.1, split: 80, maxDdPct: 3, targetPct: 9, platform: "Eigenes System", wallet: "OneKey #3 · Dolphin Profil 3", custom: false },
+  { id: "iceberg", name: "iceberg.cash", makerPct: 0.02, takerPct: 0.05, rtPct: 0.1, split: 80, maxDdPct: 3, targetPct: 9, platform: "Eigenes System", wallet: "OneKey #4 · Dolphin Profil 4", custom: false },
+  { id: "propr", name: "propr", makerPct: 0.02, takerPct: 0.05, rtPct: 0.1, split: 80, maxDdPct: 3, targetPct: 9, platform: "Eigenes System", wallet: "OneKey #5 · Dolphin Profil 5", custom: false },
+  { id: "bungee", name: "bungee", makerPct: 0.02, takerPct: 0.05, rtPct: 0.1, split: 80, maxDdPct: 3, targetPct: 9, platform: "Eigenes System", wallet: "OneKey #6 · Dolphin Profil 6", custom: false },
 ];
 
 const PRESET_KEY = "position-builder.presets.v2";
@@ -68,6 +71,7 @@ function readPreset(raw: unknown): FirmPreset | null {
     maxDdPct: base?.maxDdPct ?? 3,
     targetPct: base?.targetPct ?? 9,
     platform: isPlatform(row.platform) ? row.platform : (base?.platform ?? "Eigenes System"),
+    wallet: typeof row.wallet === "string" && row.wallet.trim() ? row.wallet.trim().slice(0, 80) : (base?.wallet ?? ""),
     custom: !base,
   };
 }
@@ -428,12 +432,12 @@ export function loopKpis(accounts: PropAccount[], entry: number, slPct: number, 
   };
 }
 
-export type HedgeMode = "safe" | "balanced" | "max" | "manual";
+export type HedgeMode = "safe" | "balanced" | "max" | "manual" | "auto";
 
-/** 20% and 10% are the slice of max DD that must still be there when the evals pass. */
+/** Auto keeps 10% of max DD when the evals pass. Balanced is the older 20% mode. */
 export function hedgeReserve(mode: HedgeMode): number | null {
+  if (mode === "auto" || mode === "max") return 0.1;
   if (mode === "balanced") return 0.2;
-  if (mode === "max") return 0.1;
   return null;
 }
 
@@ -525,15 +529,15 @@ export function fuzzBook(accounts: PropAccount[]): PropAccount[] {
   });
 }
 
-/** Crooked ±0.8% to ±1.5%. If the fail-side net goes red, the funded size is nudged back up. */
-export function fuzzWide(accounts: PropAccount[], entry: number, slPct: number, side: SideMode): PropAccount[] {
+/** Crooked size change. Default is the wide ±0.8–1.5% smear. Pass 0.009 for the ±0.9% camo. */
+export function fuzzWide(accounts: PropAccount[], entry: number, slPct: number, side: SideMode, span?: number): PropAccount[] {
   const next = accounts.map((account) => {
     if (!account.enabled || account.positionUsd === 0) return account;
-    const span = 0.008 + Math.random() * 0.007;
+    const width = span == null ? 0.008 + Math.random() * 0.007 : Math.random() * span;
     const way = Math.random() < 0.5 ? -1 : 1;
-    let mag = Math.abs(account.positionUsd) * (1 + way * span);
+    let mag = Math.abs(account.positionUsd) * (1 + way * width);
     mag = Math.round(mag * 100) / 100;
-    if (Math.round(mag) % 50 === 0) mag += 7.4 + Math.floor(Math.random() * 9);
+    if (span == null && Math.round(mag) % 50 === 0) mag += 7.4 + Math.floor(Math.random() * 9);
     return { ...account, positionUsd: Math.sign(account.positionUsd) * Math.round(mag * 100) / 100 };
   });
   const priced = next.map((account) => withEntry(account, entry));
@@ -753,14 +757,15 @@ export function referenceEntry(percentMode: boolean, index: number, override: nu
 /**
  * Broker prices for one row.
  * An eval stops at the shared SL move and takes profit at its own fee-inclusive target.
- * The funded account takes profit at that same SL move and stops where the evals pass.
+ * The funded stop is 95% of its max DD, past the eval take-profit, so the spread
+ * cannot fill the funded stop before the evals close.
  */
 export function orderPrices(
   account: PropAccount,
   entry: number,
   slPct: number,
   side: SideMode,
-  fundedStopMove: number | null,
+  _fundedStopMove: number | null,
 ): { sl: number | null; tp: number | null } {
   if (!(entry > 0)) return { sl: null, tp: null };
   const fail = entry * (1 + failFraction(side, slPct));
@@ -768,8 +773,7 @@ export function orderPrices(
     const pass = passMove(account);
     return { sl: fail, tp: pass == null ? null : entry * (1 + pass) };
   }
-  const stop = fundedStopMove ?? breachMove(account);
-  return { sl: stop == null ? null : entry * (1 + stop), tp: fail };
+  return { sl: safetyStop(account, entry), tp: fail };
 }
 
 const LOOP_KEY = "position-builder.loop.v1";

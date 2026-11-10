@@ -5,14 +5,27 @@ import { useBook } from "@/lib/book-store";
 import { fmtIndex, fmtUsd } from "@/lib/format";
 import { buildDualBook, getLoopSettings, LOOP_FALLBACK, referenceEntry, subscribeLoop, withEntry, type DualPoint, type DualSeries } from "@/lib/hydra-loop";
 import { useMarket } from "@/lib/market-store";
+import type { PropAccount } from "@/lib/types";
 
-export function HydraPayoff({ percentMode, split = false, entry: entryProp }: { percentMode: boolean; split?: boolean; entry?: number }) {
+export function HydraPayoff({
+  percentMode,
+  split = false,
+  entry: entryProp,
+  accounts: accountsProp,
+}: {
+  percentMode: boolean;
+  split?: boolean;
+  entry?: number;
+  accounts?: PropAccount[];
+}) {
   const currency = useBook((state) => state.currency);
-  const accounts = useBook((state) => state.props[currency]);
+  const stored = useBook((state) => state.props[currency]);
+  const accounts = accountsProp ?? stored;
   const index = useMarket((state) => state.index);
   const [hover, setHover] = useState<DualPoint | null>(null);
   const settings = useSyncExternalStore(subscribeLoop, getLoopSettings, () => LOOP_FALLBACK);
-  const entry = entryProp != null && entryProp > 0 ? entryProp : referenceEntry(percentMode, index, settings.entry);
+  const fromBook = accounts.find((account) => account.entry > 0)?.entry;
+  const entry = entryProp != null && entryProp > 0 ? entryProp : fromBook != null && fromBook > 0 ? fromBook : referenceEntry(percentMode, index, settings.entry);
   const rows = useMemo(() => accounts.map((account) => withEntry(account, entry)), [accounts, entry]);
   const book = useMemo(
     () => buildDualBook(rows, entry, settings.sl, settings.side),
@@ -48,7 +61,7 @@ export function HydraPayoff({ percentMode, split = false, entry: entryProp }: { 
           {shown.move >= 0 ? "+" : ""}
           {shown.move.toFixed(2)}%
           {" · "}
-          {fmtIndex(entry * (1 + shown.move / 100))}
+          {fmtIndex(shown.price > 0 ? shown.price : entry * (1 + shown.move / 100))}
           {book.series.map((series) => {
             const value = legValue(shown, series);
             if (value == null) return null;
