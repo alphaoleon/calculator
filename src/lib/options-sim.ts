@@ -4,7 +4,7 @@ import type { Right } from "@/lib/types";
 export type OptRight = Right;
 export type OptSide = "buy" | "sell";
 export type MoneyUnit = "usd" | "coin";
-export type Asset = "ETH" | "BTC";
+export type Asset = "ETH" | "BTC" | "SOL" | "HYPE";
 export type PropSide = "long" | "short";
 
 export type PriceMode = "mark" | "bid" | "ask" | "custom";
@@ -21,6 +21,10 @@ export type OptLeg = {
   iv: number;
   /** Frozen USD premium. Null reprices from Black-Scholes at entry. */
   premium: number | null;
+  /** Deribit mid, bid and ask per contract. Optional on handmade legs. */
+  mark?: number | null;
+  bid?: number | null;
+  ask?: number | null;
   /** Deribit instrument name. Empty while the leg is still synthetic. */
   name: string;
   /** Expiry code such as 27NOV26. */
@@ -49,12 +53,12 @@ export function defaultSetup(): PropSetup {
     unit: "usd",
     asset: "ETH",
     index: 2298,
-    fee: 40,
+    fee: 75,
     maxDd: 300,
-    target: 900,
+    target: 450,
     side: "long",
     coins: 5,
-    payout: 300,
+    payout: 380,
   };
 }
 
@@ -431,7 +435,22 @@ export function cappedCallSpread(setup: PropSetup): OptLeg[] {
   return [{ ...short, qty }, { ...wing, qty }];
 }
 
-/** One shared contract count so the call spread's options PnL at the DD barrier equals the challenge fee. */
+/** Ceil every active qty so the expiry PnL at the DD barrier is at least `target`. */
+export function scaleBookToTarget(legs: OptLeg[], setup: PropSetup, target: number): { legs: OptLeg[]; note: string } {
+  const bars = barriers(setup);
+  if (bars.dd == null || !(target > 0) || !(setup.index > 0)) return { legs, note: "Keine DD-Barrier oder kein Ziel." };
+  const at = (rows: OptLeg[]) => optionsPnlUsd(rows, bars.dd as number, 10_000, 0, 0, setup.index);
+  const pnl = at(legs);
+  if (!(pnl > 0.05)) return { legs, note: "Am Breach bei Verfall kein positiver Options-Gewinn." };
+  const factor = target / pnl;
+  let next = legs.map((row) => row.on && row.qty > 0 ? { ...row, qty: Math.min(1_000_000, Math.ceil(row.qty * factor * 10 - 1e-8) / 10) } : row);
+  let guard = 0;
+  while (at(next) < target - 0.01 && guard < 30) {
+    next = next.map((row) => row.on && row.qty > 0 ? { ...row, qty: Math.round((row.qty + 0.1) * 10) / 10 } : row);
+    guard += 1;
+  }
+  return { legs: next, note: "" };
+}
 export function sizeSpreadToFee(legs: OptLeg[], setup: PropSetup): OptLeg[] {
   const calls = legs.filter((row) => row.on && row.right === "call" && (row.side === "sell" || row.side === "buy"));
   if (calls.length < 2) return legs;

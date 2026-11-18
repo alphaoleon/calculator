@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { fetchDeribit } from "@/lib/deribit-public";
 import { barriers, quoteOption, smileIv, type OptLeg, type OptSide, type PropSetup } from "@/lib/options-sim";
 
-export type Currency = "ETH" | "BTC";
+export type Currency = "ETH" | "BTC" | "SOL" | "HYPE";
 export type WsStatus = "connecting" | "live" | "reconnecting";
 
 export type ChainContract = {
@@ -13,6 +13,7 @@ export type ChainContract = {
   dte: number;
   strike: number;
   right: "call" | "put";
+  linear: boolean;
   markCoin: number;
   bidCoin: number | null;
   askCoin: number | null;
@@ -56,7 +57,25 @@ const MONTHS: Record<string, number> = {
   JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11,
 };
 
-const NAME_RE = /^(ETH|BTC)-(\d{1,2})([A-Z]{3})(\d{2})-(\d+(?:\.\d+)?)-([CP])$/;
+const NAME_RE = /^(ETH|BTC|SOL_USDC|HYPE_USDC)-(\d{1,2})([A-Z]{3})(\d{2})-(\d+(?:\.\d+)?)-([CP])$/;
+
+function baseCurrency(token: string): Currency {
+  if (token.startsWith("SOL")) return "SOL";
+  if (token.startsWith("HYPE")) return "HYPE";
+  return token as Currency;
+}
+
+function isLinear(currency: Currency): boolean {
+  return currency === "SOL" || currency === "HYPE";
+}
+
+function apiCurrency(currency: Currency): string {
+  return isLinear(currency) ? "USDC" : currency;
+}
+
+function indexChannelName(currency: Currency): string {
+  return `deribit_price_index.${isLinear(currency) ? `${currency.toLowerCase()}_usdc` : `${currency.toLowerCase()}_usd`}`;
+}
 
 type Rpc = {
   id?: number;
@@ -82,12 +101,13 @@ export function parseInstrument(name: string): Omit<ChainContract, "markCoin" | 
   const expiryMs = Date.UTC(2000 + Number(match[4]), month, Number(match[2]), 8, 0, 0);
   return {
     name,
-    currency: match[1] as Currency,
+    currency: baseCurrency(match[1]),
     expiry: `${match[2]}${match[3]}${match[4]}`,
     expiryMs,
     dte: Math.max(0, (expiryMs - Date.now()) / 86_400_000),
     strike: Number(match[5]),
     right: match[6] === "C" ? "call" : "put",
+    linear: match[1].includes("_USDC"),
   };
 }
 
@@ -413,7 +433,7 @@ class DeribitLive {
 
   private async bootstrap(gen: number) {
     const currency = this.currency;
-    const indexChannel = `deribit_price_index.${currency.toLowerCase()}_usd`;
+    const indexChannel = indexChannelName(currency);
     try {
       const stale = [...this.tickerChannels];
       if (this.indexChannel && this.indexChannel !== indexChannel) stale.push(this.indexChannel);
@@ -423,7 +443,7 @@ class DeribitLive {
         await this.call("public/unsubscribe", { channels: stale }).catch(() => undefined);
       }
       if (gen !== this.generation) return;
-      const book = await this.call("public/get_book_summary_by_currency", { currency, kind: "option" });
+      const book = await this.call("public/get_book_summary_by_currency", { currency: apiCurrency(currency), kind: "option" });
       if (gen !== this.generation) return;
       const chain = parseBook(book, currency);
       this.snap = {
@@ -470,7 +490,7 @@ class DeribitLive {
     const gen = this.generation;
     const currency = this.currency;
     try {
-      const book = await this.call("public/get_book_summary_by_currency", { currency, kind: "option" });
+      const book = await this.call("public/get_book_summary_by_currency", { currency: apiCurrency(currency), kind: "option" });
       if (gen !== this.generation) return;
       const chain = parseBook(book, currency);
       if (!chain.length) return;
@@ -559,8 +579,10 @@ export function useDeribitLive(currency: Currency, names: string[]): LiveSnap {
   return snap;
 }
 
-export function coinToUsd(coin: number | null | undefined, underlying: number): number | null {
-  if (coin == null || !Number.isFinite(coin) || coin < 0 || !(underlying > 0)) return null;
+export function coinToUsd(coin: number | null | undefined, underlying: number, linear = false): number | null {
+  if (coin == null || !Number.isFinite(coin) || coin < 0) return null;
+  if (linear) return coin;
+  if (!(underlying > 0)) return null;
   return coin * underlying;
 }
 
@@ -580,7 +602,7 @@ export function coinForMode(row: Priced | undefined, mode: OptLeg["priceMode"]):
 }
 
 export function legFromContract(contract: ChainContract, side: OptSide, qty: number): OptLeg {
-  const premium = coinToUsd(contract.markCoin > 0 ? contract.markCoin : null, contract.underlying);
+  const premium = coinToUsd(contract.markCoin > 0 ? contract.markCoin : null, contract.underlying, contract.linear);
   return {
     id: `live-${contract.name}-${Math.random().toString(36).slice(2, 7)}`,
     on: true,
@@ -628,10 +650,11 @@ export function liveDelta(contract: ChainContract, index: number, ticker?: LiveT
 }
 
 async function pullPublic(currency: Currency): Promise<{ chain: ChainContract[]; index: number }> {
-  const indexName = `${currency.toLowerCase()}_usd`;
+  const indexName = isLinear(currency) ? `${currency.toLowerCase()}_usdc` : `${currency.toLowerCase()}_usd`;
+  const api = apiCurrency(currency);
   try {
     const [bookRes, indexRes] = await Promise.all([
-      fetch(`https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=${currency}&kind=option`),
+      fetch(`https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=${api}&kind=option`),
       fetch(`https://www.deribit.com/api/v2/public/get_index_price?index_name=${indexName}`),
     ]);
     if (!bookRes.ok || !indexRes.ok) throw new Error(`Deribit REST ${bookRes.status}`);
@@ -643,7 +666,7 @@ async function pullPublic(currency: Currency): Promise<{ chain: ChainContract[];
     return { chain, index };
   } catch {
     const [book, idx] = await Promise.all([
-      fetchDeribit({ data: { method: "public/get_book_summary_by_currency", query: { currency, kind: "option" } } }),
+      fetchDeribit({ data: { method: "public/get_book_summary_by_currency", query: { currency: api, kind: "option" } } }),
       fetchDeribit({ data: { method: "public/get_index_price", query: { index_name: indexName } } }),
     ]);
     const index = idx && typeof idx === "object" ? num((idx as { index_price?: unknown }).index_price) : 0;
@@ -695,8 +718,9 @@ function closestStrike(rows: ChainContract[], target: number): ChainContract | n
 }
 
 export function syntheticChain(asset: Currency, spot: number): ChainContract[] {
-  const anchor = spot > 0 ? spot : asset === "BTC" ? 80_000 : 2_300;
-  const step = asset === "BTC" ? 500 : 25;
+  const anchor = spot > 0 ? spot : asset === "BTC" ? 80_000 : asset === "SOL" ? 80 : asset === "HYPE" ? 40 : 2_300;
+  const step = asset === "BTC" ? 500 : asset === "ETH" ? 25 : asset === "HYPE" ? 1 : 1;
+  const linear = isLinear(asset);
   const expiries = [
     { dte: 3, label: "3d (Fr)" },
     { dte: 7, label: "7d (Woche)" },
@@ -714,8 +738,8 @@ export function syntheticChain(asset: Currency, spot: number): ChainContract[] {
       for (const right of ["call", "put"] as const) {
         const iv = smileIv(anchor, k, right);
         const quote = quoteOption({ spot: anchor, strike: k, dte: expiry.dte, ivPct: iv, ratePct: 0, right });
-        const markCoin = anchor > 0 ? Math.max(0, quote.usd / anchor) : 0;
-        const spread = Math.max(markCoin * 0.01, asset === "BTC" ? 0.00002 : 0.00008);
+        const markCoin = linear ? Math.max(0, quote.usd) : anchor > 0 ? Math.max(0, quote.usd / anchor) : 0;
+        const spread = Math.max(markCoin * 0.01, asset === "BTC" ? 0.00002 : linear ? 0.05 : 0.00008);
         out.push({
           name: `SYN-${asset}-${expiry.dte}d-${k}-${right === "call" ? "C" : "P"}`,
           currency: asset,
@@ -724,6 +748,7 @@ export function syntheticChain(asset: Currency, spot: number): ChainContract[] {
           dte: expiry.dte,
           strike: k,
           right,
+          linear,
           markCoin,
           bidCoin: markCoin > spread ? markCoin - spread : null,
           askCoin: markCoin + spread,
